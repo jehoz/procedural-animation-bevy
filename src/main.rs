@@ -1,13 +1,18 @@
 use bevy::prelude::*;
+use rand::prelude::*;
 
 #[derive(Component)]
 struct Creature {
     speed: f32,
+    target_position: Vec2,
 }
 
 impl Creature {
     fn new() -> Self {
-        Creature { speed: 1.0 }
+        Creature {
+            speed: 2.0,
+            target_position: Vec2::ZERO,
+        }
     }
 }
 
@@ -56,20 +61,28 @@ fn setup(
                 stacks: 8,
             })),
             material: materials.add(Color::WHITE.into()),
-            transform: Transform::from_translation(Vec3::ZERO),
+            transform: Transform::from_translation(Vec3::ONE),
             ..default()
         },
         Creature::new(),
     ));
 }
 
-fn move_creatures(mut query: Query<(&mut Transform, &Creature)>, time: Res<Time>) {
-    for (mut transform, creature) in &mut query {
-        let r = 2.0;
-        transform.translation = Vec3 {
-            x: r * f32::sin(creature.speed * time.elapsed_seconds()),
-            y: 1.0,
-            z: r * f32::cos(creature.speed * time.elapsed_seconds()),
-        };
+fn move_creatures(mut query: Query<(&mut Transform, &mut Creature)>, time: Res<Time>) {
+    for (mut transform, mut creature) in &mut query {
+        if transform
+            .translation
+            .xz()
+            .distance(creature.target_position)
+            < 0.5
+        {
+            creature.target_position = Vec2 {
+                x: (random::<f32>() * 10.0) - 5.0,
+                y: (random::<f32>() * 10.0) - 5.0,
+            };
+        }
+        let dir = (creature.target_position - transform.translation.xz()).normalize();
+        transform.translation.x += dir.x * creature.speed * time.delta_seconds();
+        transform.translation.z += dir.y * creature.speed * time.delta_seconds();
     }
 }
