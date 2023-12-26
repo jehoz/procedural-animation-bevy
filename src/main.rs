@@ -4,14 +4,16 @@ use rand::prelude::*;
 #[derive(Component)]
 struct Creature {
     move_speed: f32,
-    target_position: Vec2,
+    turn_speed: f32,
+    target_position: Vec3,
 }
 
 impl Creature {
     fn new() -> Self {
         Creature {
             move_speed: 2.0,
-            target_position: Vec2::ZERO,
+            turn_speed: 3.0,
+            target_position: Vec3::ZERO,
         }
     }
 }
@@ -71,31 +73,34 @@ fn setup(
     ));
 }
 
-fn move_creatures(mut query: Query<(&mut Transform, &mut Creature)>, time: Res<Time>) {
+fn move_creatures(
+    mut gizmos: Gizmos,
+    mut query: Query<(&mut Transform, &mut Creature)>,
+    time: Res<Time>,
+) {
     for (mut transform, mut creature) in &mut query {
-        if transform
-            .translation
-            .xz()
-            .distance(creature.target_position)
-            < 0.5
-        {
-            creature.target_position = Vec2 {
+        if transform.translation.distance(creature.target_position) < 0.5 {
+            creature.target_position = Vec3 {
                 x: (random::<f32>() * 10.0) - 5.0,
-                y: (random::<f32>() * 10.0) - 5.0,
+                y: transform.translation.y,
+                z: (random::<f32>() * 10.0) - 5.0,
             };
         }
 
-        let dir = (creature.target_position - transform.translation.xz()).normalize();
-        transform.look_to(
-            Vec3 {
-                x: dir.x,
-                y: 0.0,
-                z: dir.y,
-            },
-            Vec3::Y,
-        );
+        gizmos.circle(creature.target_position, Vec3::Y, 0.25, Color::RED);
 
-        transform.translation.x += dir.x * creature.move_speed * time.delta_seconds();
-        transform.translation.z += dir.y * creature.move_speed * time.delta_seconds();
+        let target_dir = (creature.target_position - transform.translation).normalize();
+        let rquat = Quat::from_rotation_arc(transform.forward(), target_dir);
+        let (_, mut y_rot, _) = rquat.to_euler(EulerRot::XYZ);
+        if y_rot < 0.0 {
+            y_rot = f32::max(y_rot, -1.0 * creature.turn_speed * time.delta_seconds());
+        } else {
+            y_rot = f32::min(y_rot, creature.turn_speed * time.delta_seconds());
+        }
+
+        transform.rotate(Quat::from_rotation_y(y_rot));
+
+        let movement = transform.forward() * creature.move_speed * time.delta_seconds();
+        transform.translation += movement;
     }
 }
