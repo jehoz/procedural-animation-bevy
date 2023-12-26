@@ -3,14 +3,14 @@ use rand::prelude::*;
 
 #[derive(Component)]
 struct Creature {
-    speed: f32,
+    move_speed: f32,
     target_position: Vec2,
 }
 
 impl Creature {
     fn new() -> Self {
         Creature {
-            speed: 2.0,
+            move_speed: 2.0,
             target_position: Vec2::ZERO,
         }
     }
@@ -55,13 +55,16 @@ fn setup(
     // creature (sphere)
     commands.spawn((
         PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::UVSphere {
-                radius: 0.25,
-                sectors: 8,
-                stacks: 8,
+            mesh: meshes.add(Mesh::from(shape::Box {
+                min_x: -0.25,
+                max_x: 0.25,
+                min_y: -0.25,
+                max_y: 0.25,
+                min_z: -0.5,
+                max_z: 0.5,
             })),
             material: materials.add(Color::WHITE.into()),
-            transform: Transform::from_translation(Vec3::ONE),
+            transform: Transform::IDENTITY,
             ..default()
         },
         Creature::new(),
@@ -81,8 +84,18 @@ fn move_creatures(mut query: Query<(&mut Transform, &mut Creature)>, time: Res<T
                 y: (random::<f32>() * 10.0) - 5.0,
             };
         }
+
         let dir = (creature.target_position - transform.translation.xz()).normalize();
-        transform.translation.x += dir.x * creature.speed * time.delta_seconds();
-        transform.translation.z += dir.y * creature.speed * time.delta_seconds();
+        transform.look_to(
+            Vec3 {
+                x: dir.x,
+                y: 0.0,
+                z: dir.y,
+            },
+            Vec3::Y,
+        );
+
+        transform.translation.x += dir.x * creature.move_speed * time.delta_seconds();
+        transform.translation.z += dir.y * creature.move_speed * time.delta_seconds();
     }
 }
