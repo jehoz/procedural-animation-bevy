@@ -3,15 +3,15 @@ use rand::prelude::*;
 
 #[derive(Component)]
 struct BodySegment {
-    entity: Option<Entity>,
-    distance: f32,
+    entity: Entity,
+    distance_to_parent: f32,
 }
 
 impl BodySegment {
-    fn new() -> Self {
+    fn new(e: Entity) -> Self {
         BodySegment {
-            entity: None,
-            distance: 0.3,
+            entity: e,
+            distance_to_parent: 0.3,
         }
     }
 }
@@ -74,26 +74,13 @@ fn setup(
     // creature
     let mut creature = Creature::new();
     for i in 0..8 {
-        let mut segment = BodySegment::new();
-        segment.entity = Some(
+        let segment = BodySegment::new(
             commands
-                .spawn(PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Box {
-                        min_x: -0.1,
-                        max_x: 0.1,
-                        min_y: -0.1,
-                        max_y: 0.1,
-                        min_z: -0.1,
-                        max_z: 0.1,
-                    })),
-                    material: materials.add(Color::WHITE.into()),
-                    transform: Transform::IDENTITY.with_translation(Vec3::new(
-                        0.0,
-                        0.25,
-                        (i as f32) * segment.distance,
-                    )),
-                    ..default()
-                })
+                .spawn(Transform::IDENTITY.with_translation(Vec3::new(
+                    0.0,
+                    0.25,
+                    (i as f32) * 0.25,
+                )))
                 .id(),
         );
         creature.body_segments.push(segment);
@@ -109,7 +96,7 @@ fn move_creatures(
 ) {
     for mut creature in &mut creatures {
         let mut head = transforms
-            .get_mut(creature.body_segments[0].entity.unwrap())
+            .get_mut(creature.body_segments[0].entity)
             .unwrap();
 
         // if reached target position, choose a new one randomly
@@ -121,6 +108,7 @@ fn move_creatures(
             };
         }
 
+        gizmos.sphere(head.translation, head.rotation, 0.15, Color::WHITE);
         gizmos.circle(creature.target_position, Vec3::Y, 0.25, Color::RED);
 
         // turn head towards target
@@ -138,16 +126,15 @@ fn move_creatures(
         // move each body segment towards the one ahead of it
         for i in 1..creature.body_segments.len() {
             let segment = &creature.body_segments[i];
-            let [parent, mut current] = transforms.many_mut([
-                creature.body_segments[i - 1].entity.unwrap(),
-                segment.entity.unwrap(),
-            ]);
-            gizmos.line(parent.translation, current.translation, Color::WHITE);
+            let [parent, mut current] =
+                transforms.many_mut([creature.body_segments[i - 1].entity, segment.entity]);
+            gizmos.sphere(current.translation, current.rotation, 0.15, Color::WHITE);
+            gizmos.line(parent.translation, current.translation, Color::BLUE);
 
             current.look_at(parent.translation, Vec3::Y);
 
             let dist = parent.translation.distance(current.translation);
-            let movement = current.forward() * (dist - segment.distance);
+            let movement = current.forward() * (dist - segment.distance_to_parent);
             current.translation += movement;
         }
     }
