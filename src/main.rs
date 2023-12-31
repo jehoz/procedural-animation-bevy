@@ -117,7 +117,7 @@ fn move_creatures(
     mut gizmos: Gizmos,
     mut creatures: Query<&mut Creature>,
     mut body_segments: Query<(&BodySegment, &mut Transform)>,
-    mut legs: Query<(&Leg, &mut Transform), Without<BodySegment>>,
+    mut legs: Query<(&mut Leg, &mut Transform), Without<BodySegment>>,
     time: Res<Time>,
 ) {
     for mut creature in &mut creatures {
@@ -186,37 +186,36 @@ fn move_creatures(
             );
 
             if let Some((leg_l_ent, leg_r_ent)) = current.legs {
-                let [(leg_l, mut leg_l_transform), (leg_r, mut leg_r_transform)] =
-                    legs.many_mut([leg_l_ent, leg_r_ent]);
-
-                let shoulder_l =
-                    current_transform.translation + current_transform.left() * current.radius;
-                let shoulder_r =
-                    current_transform.translation + current_transform.right() * current.radius;
-
-                if leg_l_transform
-                    .translation
-                    .distance(current_transform.translation)
-                    > leg_l.length
-                {
-                    let front_left = Quat::from_rotation_y(std::f32::consts::FRAC_PI_8)
-                        .mul_vec3(current_transform.forward());
-                    leg_l_transform.translation = shoulder_l + front_left * leg_l.length * 0.75;
-                }
-
-                if leg_r_transform
-                    .translation
-                    .distance(current_transform.translation)
-                    > leg_r.length
-                {
-                    let front_right = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_8)
-                        .mul_vec3(current_transform.forward());
-                    leg_r_transform.translation = shoulder_r + front_right * leg_r.length * 0.75;
-                }
-
-                gizmos.line(shoulder_l, leg_l_transform.translation, Color::GREEN);
-                gizmos.line(shoulder_r, leg_r_transform.translation, Color::GREEN);
+                let [l, r] = legs.many_mut([leg_l_ent, leg_r_ent]);
+                update_leg_pair(&mut gizmos, l, r, (current, &current_transform));
             }
         }
     }
+}
+
+fn update_leg_pair<'a>(
+    gizmos: &mut Gizmos,
+    left: (Mut<'a, Leg>, Mut<'a, Transform>),
+    right: (Mut<'a, Leg>, Mut<'a, Transform>),
+    body: (&BodySegment, &Transform),
+) {
+    let shoulder_l = body.1.translation + body.1.left() * body.0.radius;
+    let shoulder_r = body.1.translation + body.1.right() * body.0.radius;
+
+    let (leg_l, mut leg_l_transform) = left;
+    let (leg_r, mut leg_r_transform) = right;
+    if leg_l_transform.translation.distance(body.1.translation) > leg_l.length {
+        let front_left =
+            Quat::from_rotation_y(std::f32::consts::FRAC_PI_8).mul_vec3(body.1.forward());
+        leg_l_transform.translation = shoulder_l + front_left * leg_l.length * 0.75;
+    }
+
+    if leg_r_transform.translation.distance(body.1.translation) > leg_r.length {
+        let front_right =
+            Quat::from_rotation_y(-std::f32::consts::FRAC_PI_8).mul_vec3(body.1.forward());
+        leg_r_transform.translation = shoulder_r + front_right * leg_r.length * 0.75;
+    }
+
+    gizmos.line(shoulder_l, leg_l_transform.translation, Color::GREEN);
+    gizmos.line(shoulder_r, leg_r_transform.translation, Color::GREEN);
 }
