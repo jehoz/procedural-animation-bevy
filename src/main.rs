@@ -216,6 +216,35 @@ fn update_leg_pair<'a>(
         leg_r_transform.translation = shoulder_r + front_right * leg_r.length * 0.75;
     }
 
-    gizmos.line(shoulder_l, leg_l_transform.translation, Color::GREEN);
-    gizmos.line(shoulder_r, leg_r_transform.translation, Color::GREEN);
+    let seg_len = leg_l.length * 0.5;
+    let elbow_l = elbow_position(shoulder_l, leg_l_transform.translation, seg_len);
+    let elbow_r = elbow_position(shoulder_r, leg_r_transform.translation, seg_len);
+
+    gizmos.line(shoulder_l, elbow_l, Color::PURPLE);
+    gizmos.line(elbow_l, leg_l_transform.translation, Color::PINK);
+
+    gizmos.line(shoulder_r, elbow_r, Color::PURPLE);
+    gizmos.line(elbow_r, leg_r_transform.translation, Color::PINK);
+}
+
+fn elbow_position(shoulder: Vec3, hand: Vec3, segment_length: f32) -> Vec3 {
+    let gamma = {
+        let l = 2.0 * segment_length.powi(2);
+        f32::acos((l - shoulder.distance(hand)) / l)
+    };
+
+    let hyp = shoulder.distance(hand);
+
+    // simplifying here because a and b sides always same length
+    let alpha = f32::acos(hyp / (2.0 * segment_length));
+
+    let rotation = Quat::from_axis_angle(
+        (hand - shoulder).normalize().cross(Vec3::Z),
+        alpha + gamma + std::f32::consts::FRAC_PI_4,
+    );
+
+    let mut offset = Vec3::new(0.0, 0.0, -segment_length);
+    offset = rotation.mul_vec3(offset);
+
+    return hand + offset;
 }
