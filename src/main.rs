@@ -228,19 +228,22 @@ fn update_leg_pair<'a>(
 }
 
 fn elbow_position(shoulder: Vec3, hand: Vec3, segment_length: f32) -> Vec3 {
-    let gamma = {
-        let l = 2.0 * segment_length.powi(2);
-        f32::acos((l - shoulder.distance(hand)) / l)
-    };
-
     let hyp = shoulder.distance(hand);
 
     // simplifying here because a and b sides always same length
     let alpha = f32::acos(hyp / (2.0 * segment_length));
 
+    let theta = {
+        let mut delta = hand - shoulder;
+        let z = delta.z.abs();
+        delta.z = 0.0;
+        let xy = delta.length();
+        (z / xy).atan()
+    };
+
     let rotation = Quat::from_axis_angle(
         (hand - shoulder).normalize().cross(Vec3::Z),
-        alpha + gamma + std::f32::consts::FRAC_PI_4,
+        alpha + theta - std::f32::consts::FRAC_PI_4,
     );
 
     let mut offset = Vec3::new(0.0, 0.0, -segment_length);
