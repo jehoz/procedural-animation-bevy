@@ -252,10 +252,10 @@ fn elbow_position(shoulder: Vec3, hand: Vec3, segment_length: f32) -> Vec3 {
         (y / xz).atan()
     };
 
-    let rotation = Quat::from_axis_angle(
-        (hand - shoulder).normalize().cross(Vec3::Y),
-        std::f32::consts::FRAC_PI_4 - (alpha + theta),
-    );
+    let (rot_axis, _) =
+        Quat::from_rotation_arc(Vec3::Y, (hand - shoulder).normalize()).to_axis_angle();
+
+    let rotation = Quat::from_axis_angle(rot_axis, (alpha + theta) - std::f32::consts::FRAC_PI_2);
 
     let mut offset = Vec3::new(0.0, segment_length, 0.0);
     offset = rotation.mul_vec3(offset);
