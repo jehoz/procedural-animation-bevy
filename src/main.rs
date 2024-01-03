@@ -1,14 +1,32 @@
 use bevy::prelude::*;
 use rand::prelude::*;
 
+struct Oscillator {
+    frequency: f32,
+    phase: f32,
+}
+
+impl Oscillator {
+    fn get(&self, x: f32) -> f32 {
+        (self.frequency * (x + self.phase)).sin()
+    }
+}
+
 #[derive(Component)]
 struct Leg {
     length: f32,
+    oscillator: Oscillator,
 }
 
 impl Leg {
     fn new() -> Self {
-        Leg { length: 0.5 }
+        Leg {
+            length: 0.5,
+            oscillator: Oscillator {
+                frequency: 1.0,
+                phase: 0.0,
+            },
+        }
     }
 }
 
@@ -86,24 +104,40 @@ fn setup(
 
     // creature
     let mut creature = Creature::new();
-    for i in 0..8 {
+    for i in 0..4 {
         let transform =
             Transform::IDENTITY.with_translation(Vec3::new(0.0, 0.5, 0.25 * (i as f32)));
 
         let mut segment = BodySegment::new();
-        if i == 1 || i == 6 {
-            let leg_l = commands
-                .spawn((
-                    Leg::new(),
-                    transform.with_translation(Vec3::new(-0.1, 0.0, 0.0)),
-                ))
-                .id();
-            let leg_r = commands
-                .spawn((
-                    Leg::new(),
-                    transform.with_translation(Vec3::new(-0.1, 0.0, 0.0)),
-                ))
-                .id();
+        if i > 0 {
+            let leg_l = {
+                let oscillator = Oscillator {
+                    frequency: 1.0,
+                    phase: 0.0,
+                };
+                let length = 0.5;
+                let leg = Leg { length, oscillator };
+                commands
+                    .spawn((
+                        leg,
+                        transform.with_translation(Vec3::new(-length * 0.5, 0.0, length * 0.5)),
+                    ))
+                    .id()
+            };
+            let leg_r = {
+                let oscillator = Oscillator {
+                    frequency: 1.0,
+                    phase: std::f32::consts::PI,
+                };
+                let length = 0.5;
+                let leg = Leg { length, oscillator };
+                commands
+                    .spawn((
+                        leg,
+                        transform.with_translation(Vec3::new(length * 0.5, 0.0, -length * 0.5)),
+                    ))
+                    .id()
+            };
             segment.legs = Some((leg_l, leg_r));
         }
         let segment_ent = commands.spawn((segment, transform)).id();
