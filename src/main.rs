@@ -204,49 +204,60 @@ fn update_leg_pair<'a>(
 
     let (leg_l, mut leg_l_transform) = left;
     let (leg_r, mut leg_r_transform) = right;
-    if leg_l_transform.translation.distance(body.1.translation) > leg_l.length {
+    if leg_l_transform.translation.distance(shoulder_l) >= leg_l.length {
         let front_left =
-            Quat::from_rotation_y(std::f32::consts::FRAC_PI_8).mul_vec3(body.1.forward());
-        leg_l_transform.translation = shoulder_l + front_left * leg_l.length * 0.75;
+            Quat::from_rotation_y(std::f32::consts::FRAC_PI_4).mul_vec3(body.1.forward());
+        leg_l_transform.translation = shoulder_l + front_left * leg_l.length * 0.9;
     }
 
-    if leg_r_transform.translation.distance(body.1.translation) > leg_r.length {
+    if leg_r_transform.translation.distance(shoulder_r) >= leg_r.length {
         let front_right =
-            Quat::from_rotation_y(-std::f32::consts::FRAC_PI_8).mul_vec3(body.1.forward());
-        leg_r_transform.translation = shoulder_r + front_right * leg_r.length * 0.75;
+            Quat::from_rotation_y(-std::f32::consts::FRAC_PI_4).mul_vec3(body.1.forward());
+        leg_r_transform.translation = shoulder_r + front_right * leg_r.length * 0.9;
     }
 
     let seg_len = leg_l.length * 0.5;
     let elbow_l = elbow_position(shoulder_l, leg_l_transform.translation, seg_len);
     let elbow_r = elbow_position(shoulder_r, leg_r_transform.translation, seg_len);
 
-    gizmos.line(shoulder_l, elbow_l, Color::PURPLE);
-    gizmos.line(elbow_l, leg_l_transform.translation, Color::PINK);
+    draw_limb_segment(gizmos, shoulder_l, elbow_l, seg_len);
+    draw_limb_segment(gizmos, elbow_l, leg_l_transform.translation, seg_len);
 
-    gizmos.line(shoulder_r, elbow_r, Color::PURPLE);
-    gizmos.line(elbow_r, leg_r_transform.translation, Color::PINK);
+    draw_limb_segment(gizmos, shoulder_r, elbow_r, seg_len);
+    draw_limb_segment(gizmos, elbow_r, leg_r_transform.translation, seg_len);
+}
+
+fn draw_limb_segment(gizmos: &mut Gizmos, a: Vec3, b: Vec3, length: f32) {
+    if a.distance(b) < length * 0.99 {
+        gizmos.line(a, b, Color::CYAN);
+    } else if a.distance(b) > length * 1.01 {
+        gizmos.line(a, b, Color::RED);
+    } else {
+        gizmos.line(a, b, Color::PURPLE);
+    }
 }
 
 fn elbow_position(shoulder: Vec3, hand: Vec3, segment_length: f32) -> Vec3 {
-    let hyp = shoulder.distance(hand);
-
-    // simplifying here because a and b sides always same length
-    let alpha = f32::acos(hyp / (2.0 * segment_length));
+    let alpha = {
+        let hyp = shoulder.distance(hand);
+        // simplifying here because a and b sides always same length
+        f32::acos(hyp / (2.0 * segment_length))
+    };
 
     let theta = {
         let mut delta = hand - shoulder;
-        let z = delta.z.abs();
-        delta.z = 0.0;
-        let xy = delta.length();
-        (z / xy).atan()
+        let y = delta.y.abs();
+        delta.y = 0.0;
+        let xz = delta.length();
+        (y / xz).atan()
     };
 
     let rotation = Quat::from_axis_angle(
-        (hand - shoulder).normalize().cross(Vec3::Z),
-        alpha + theta - std::f32::consts::FRAC_PI_4,
+        (hand - shoulder).normalize().cross(Vec3::Y),
+        std::f32::consts::FRAC_PI_4 - (alpha + theta),
     );
 
-    let mut offset = Vec3::new(0.0, 0.0, -segment_length);
+    let mut offset = Vec3::new(0.0, segment_length, 0.0);
     offset = rotation.mul_vec3(offset);
 
     return hand + offset;
