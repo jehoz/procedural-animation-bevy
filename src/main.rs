@@ -233,29 +233,29 @@ fn move_legs(
         if let Some((ent_l, ent_r)) = body.legs {
             let [(leg_l, mut foot_l), (leg_r, mut foot_r)] = legs.many_mut([ent_l, ent_r]);
 
-            let shoulder_l = body_transform.translation + body_transform.left() * body.radius;
-            let shoulder_r = body_transform.translation + body_transform.right() * body.radius;
+            let hip_l = body_transform.translation + body_transform.left() * body.radius;
+            let hip_r = body_transform.translation + body_transform.right() * body.radius;
 
-            if foot_l.translation.distance(shoulder_l) >= leg_l.length {
+            if foot_l.translation.distance(hip_l) >= leg_l.length {
                 let foot_dir = Quat::from_rotation_y(std::f32::consts::FRAC_PI_4)
                     .mul_vec3(body_transform.forward());
-                foot_l.translation = shoulder_l + foot_dir * leg_l.length * 0.9;
+                foot_l.translation = hip_l + foot_dir * leg_l.length * 0.9;
             }
-            if foot_r.translation.distance(shoulder_r) >= leg_r.length {
+            if foot_r.translation.distance(hip_r) >= leg_r.length {
                 let foot_dir = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_4)
                     .mul_vec3(body_transform.forward());
-                foot_r.translation = shoulder_r + foot_dir * leg_r.length * 0.9;
+                foot_r.translation = hip_r + foot_dir * leg_r.length * 0.9;
             }
 
             let seg_len = leg_l.length * 0.5;
-            let elbow_l = elbow_position(shoulder_l, foot_l.translation, seg_len);
-            let elbow_r = elbow_position(shoulder_r, foot_r.translation, seg_len);
+            let knee_l = knee_position(hip_l, foot_l.translation, seg_len);
+            let knee_r = knee_position(hip_r, foot_r.translation, seg_len);
 
-            draw_limb_segment(&mut gizmos, shoulder_l, elbow_l, seg_len);
-            draw_limb_segment(&mut gizmos, elbow_l, foot_l.translation, seg_len);
+            draw_limb_segment(&mut gizmos, hip_l, knee_l, seg_len);
+            draw_limb_segment(&mut gizmos, knee_l, foot_l.translation, seg_len);
 
-            draw_limb_segment(&mut gizmos, shoulder_r, elbow_r, seg_len);
-            draw_limb_segment(&mut gizmos, elbow_r, foot_r.translation, seg_len);
+            draw_limb_segment(&mut gizmos, hip_r, knee_r, seg_len);
+            draw_limb_segment(&mut gizmos, knee_r, foot_r.translation, seg_len);
         }
     }
 }
@@ -270,28 +270,27 @@ fn draw_limb_segment(gizmos: &mut Gizmos, a: Vec3, b: Vec3, length: f32) {
     }
 }
 
-fn elbow_position(shoulder: Vec3, hand: Vec3, segment_length: f32) -> Vec3 {
+fn knee_position(hip: Vec3, foot: Vec3, segment_length: f32) -> Vec3 {
     let alpha = {
-        let hyp = shoulder.distance(hand);
+        let hyp = hip.distance(foot);
         // simplifying here because a and b sides always same length
         f32::acos(hyp / (2.0 * segment_length))
     };
 
     let theta = {
-        let mut delta = hand - shoulder;
+        let mut delta = foot - hip;
         let y = delta.y.abs();
         delta.y = 0.0;
         let xz = delta.length();
         (y / xz).atan()
     };
 
-    let (rot_axis, _) =
-        Quat::from_rotation_arc(Vec3::Y, (hand - shoulder).normalize()).to_axis_angle();
+    let (rot_axis, _) = Quat::from_rotation_arc(Vec3::Y, (foot - hip).normalize()).to_axis_angle();
 
     let rotation = Quat::from_axis_angle(rot_axis, (alpha + theta) - std::f32::consts::FRAC_PI_2);
 
     let mut offset = Vec3::new(0.0, segment_length, 0.0);
     offset = rotation.mul_vec3(offset);
 
-    return hand + offset;
+    return foot + offset;
 }
