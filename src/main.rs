@@ -71,6 +71,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Update, move_creatures)
+        .add_systems(Update, move_legs.after(move_creatures))
         .run();
 }
 
@@ -218,47 +219,45 @@ fn move_creatures(
                 parent_transform.translation,
                 Color::BLUE,
             );
-
-            if let Some((leg_l_ent, leg_r_ent)) = current.legs {
-                let [l, r] = legs.many_mut([leg_l_ent, leg_r_ent]);
-                update_leg_pair(&mut gizmos, l, r, (current, &current_transform));
-            }
         }
     }
 }
 
-fn update_leg_pair<'a>(
-    gizmos: &mut Gizmos,
-    left: (Mut<'a, Leg>, Mut<'a, Transform>),
-    right: (Mut<'a, Leg>, Mut<'a, Transform>),
-    body: (&BodySegment, &Transform),
+fn move_legs(
+    mut gizmos: Gizmos,
+    body_segments: Query<(&BodySegment, &mut Transform)>,
+    mut legs: Query<(&mut Leg, &mut Transform), Without<BodySegment>>,
+    time: Res<Time>,
 ) {
-    let shoulder_l = body.1.translation + body.1.left() * body.0.radius;
-    let shoulder_r = body.1.translation + body.1.right() * body.0.radius;
+    for (body, body_transform) in &body_segments {
+        if let Some((ent_l, ent_r)) = body.legs {
+            let [(leg_l, mut foot_l), (leg_r, mut foot_r)] = legs.many_mut([ent_l, ent_r]);
 
-    let (leg_l, mut leg_l_transform) = left;
-    let (leg_r, mut leg_r_transform) = right;
-    if leg_l_transform.translation.distance(shoulder_l) >= leg_l.length {
-        let front_left =
-            Quat::from_rotation_y(std::f32::consts::FRAC_PI_4).mul_vec3(body.1.forward());
-        leg_l_transform.translation = shoulder_l + front_left * leg_l.length * 0.9;
+            let shoulder_l = body_transform.translation + body_transform.left() * body.radius;
+            let shoulder_r = body_transform.translation + body_transform.right() * body.radius;
+
+            if foot_l.translation.distance(shoulder_l) >= leg_l.length {
+                let foot_dir = Quat::from_rotation_y(std::f32::consts::FRAC_PI_4)
+                    .mul_vec3(body_transform.forward());
+                foot_l.translation = shoulder_l + foot_dir * leg_l.length * 0.9;
+            }
+            if foot_r.translation.distance(shoulder_r) >= leg_r.length {
+                let foot_dir = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_4)
+                    .mul_vec3(body_transform.forward());
+                foot_r.translation = shoulder_r + foot_dir * leg_r.length * 0.9;
+            }
+
+            let seg_len = leg_l.length * 0.5;
+            let elbow_l = elbow_position(shoulder_l, foot_l.translation, seg_len);
+            let elbow_r = elbow_position(shoulder_r, foot_r.translation, seg_len);
+
+            draw_limb_segment(&mut gizmos, shoulder_l, elbow_l, seg_len);
+            draw_limb_segment(&mut gizmos, elbow_l, foot_l.translation, seg_len);
+
+            draw_limb_segment(&mut gizmos, shoulder_r, elbow_r, seg_len);
+            draw_limb_segment(&mut gizmos, elbow_r, foot_r.translation, seg_len);
+        }
     }
-
-    if leg_r_transform.translation.distance(shoulder_r) >= leg_r.length {
-        let front_right =
-            Quat::from_rotation_y(-std::f32::consts::FRAC_PI_4).mul_vec3(body.1.forward());
-        leg_r_transform.translation = shoulder_r + front_right * leg_r.length * 0.9;
-    }
-
-    let seg_len = leg_l.length * 0.5;
-    let elbow_l = elbow_position(shoulder_l, leg_l_transform.translation, seg_len);
-    let elbow_r = elbow_position(shoulder_r, leg_r_transform.translation, seg_len);
-
-    draw_limb_segment(gizmos, shoulder_l, elbow_l, seg_len);
-    draw_limb_segment(gizmos, elbow_l, leg_l_transform.translation, seg_len);
-
-    draw_limb_segment(gizmos, shoulder_r, elbow_r, seg_len);
-    draw_limb_segment(gizmos, elbow_r, leg_r_transform.translation, seg_len);
 }
 
 fn draw_limb_segment(gizmos: &mut Gizmos, a: Vec3, b: Vec3, length: f32) {
