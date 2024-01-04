@@ -1,4 +1,6 @@
+use bevy::input::common_conditions::input_toggle_active;
 use bevy::prelude::*;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use rand::prelude::*;
 
 struct Oscillator {
@@ -62,6 +64,9 @@ impl Creature {
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugins(
+            WorldInspectorPlugin::default().run_if(input_toggle_active(true, KeyCode::Escape)),
+        )
         .add_systems(Startup, setup)
         .add_systems(Update, move_creatures)
         .add_systems(Update, move_legs.after(move_creatures))
