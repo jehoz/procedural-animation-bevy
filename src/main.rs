@@ -7,8 +7,12 @@ struct Oscillator {
 }
 
 impl Oscillator {
-    fn get(&self, x: f32) -> f32 {
-        (self.frequency * (x + self.phase)).sin()
+    fn sin(&self, t: &Time) -> f32 {
+        (self.frequency * t.elapsed_seconds() + self.phase).sin()
+    }
+
+    fn cos(&self, t: &Time) -> f32 {
+        (self.frequency * t.elapsed_seconds() + self.phase).cos()
     }
 }
 
@@ -16,18 +20,7 @@ impl Oscillator {
 struct Leg {
     length: f32,
     oscillator: Oscillator,
-}
-
-impl Leg {
-    fn new() -> Self {
-        Leg {
-            length: 0.5,
-            oscillator: Oscillator {
-                frequency: 1.0,
-                phase: 0.0,
-            },
-        }
-    }
+    last_position: Vec3,
 }
 
 #[derive(Component)]
@@ -107,37 +100,37 @@ fn setup(
     let mut creature = Creature::new();
     for i in 0..4 {
         let transform =
-            Transform::IDENTITY.with_translation(Vec3::new(0.0, 0.5, 0.25 * (i as f32)));
+            Transform::IDENTITY.with_translation(Vec3::new(0.0, 0.25, 0.25 * (i as f32)));
 
         let mut segment = BodySegment::new();
         if i > 0 {
             let leg_l = {
                 let oscillator = Oscillator {
-                    frequency: 1.0,
-                    phase: 0.0,
+                    frequency: 16.0,
+                    phase: 0.0 + i as f32 * std::f32::consts::PI,
                 };
                 let length = 0.5;
-                let leg = Leg { length, oscillator };
-                commands
-                    .spawn((
-                        leg,
-                        transform.with_translation(Vec3::new(-length * 0.5, 0.0, length * 0.5)),
-                    ))
-                    .id()
+                let t = transform.with_translation(Vec3::new(-length * 0.5, 0.0, length * 0.5));
+                let leg = Leg {
+                    length,
+                    oscillator,
+                    last_position: t.translation,
+                };
+                commands.spawn((leg, t)).id()
             };
             let leg_r = {
                 let oscillator = Oscillator {
-                    frequency: 1.0,
-                    phase: std::f32::consts::PI,
+                    frequency: 16.0,
+                    phase: std::f32::consts::PI + i as f32 * std::f32::consts::PI,
                 };
                 let length = 0.5;
-                let leg = Leg { length, oscillator };
-                commands
-                    .spawn((
-                        leg,
-                        transform.with_translation(Vec3::new(length * 0.5, 0.0, -length * 0.5)),
-                    ))
-                    .id()
+                let t = transform.with_translation(Vec3::new(-length * 0.5, 0.0, -length * 0.5));
+                let leg = Leg {
+                    length,
+                    oscillator,
+                    last_position: t.translation,
+                };
+                commands.spawn((leg, t)).id()
             };
             segment.legs = Some((leg_l, leg_r));
         }
@@ -152,7 +145,6 @@ fn move_creatures(
     mut gizmos: Gizmos,
     mut creatures: Query<&mut Creature>,
     mut body_segments: Query<(&BodySegment, &mut Transform)>,
-    mut legs: Query<(&mut Leg, &mut Transform), Without<BodySegment>>,
     time: Res<Time>,
 ) {
     for mut creature in &mut creatures {
@@ -231,23 +223,43 @@ fn move_legs(
 ) {
     for (body, body_transform) in &body_segments {
         if let Some((ent_l, ent_r)) = body.legs {
-            let [(leg_l, mut foot_l), (leg_r, mut foot_r)] = legs.many_mut([ent_l, ent_r]);
+            let [(mut leg_l, mut foot_l), (mut leg_r, mut foot_r)] = legs.many_mut([ent_l, ent_r]);
 
             let hip_l = body_transform.translation + body_transform.left() * body.radius;
             let hip_r = body_transform.translation + body_transform.right() * body.radius;
 
-            if foot_l.translation.distance(hip_l) >= leg_l.length {
+            if leg_l.oscillator.sin(&time) > 0.0 {
                 let foot_dir = Quat::from_rotation_y(std::f32::consts::FRAC_PI_4)
                     .mul_vec3(body_transform.forward());
-                foot_l.translation = hip_l + foot_dir * leg_l.length * 0.9;
+                let foot_target = hip_l + foot_dir * leg_l.length * 0.9;
+
+                foot_l.translation = Vec3::lerp(
+                    foot_target,
+                    leg_l.last_position,
+                    (leg_l.oscillator.cos(&time) + 1.0) / 2.0,
+                );
+                foot_l.translation.y = hip_l.y * leg_l.oscillator.sin(&time);
+            } else {
+                leg_l.last_position = foot_l.translation;
             }
-            if foot_r.translation.distance(hip_r) >= leg_r.length {
+
+            if leg_r.oscillator.sin(&time) > 0.0 {
                 let foot_dir = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_4)
                     .mul_vec3(body_transform.forward());
-                foot_r.translation = hip_r + foot_dir * leg_r.length * 0.9;
+                let foot_target = hip_r + foot_dir * leg_r.length * 0.9;
+
+                foot_r.translation = Vec3::lerp(
+                    foot_target,
+                    leg_r.last_position,
+                    (leg_r.oscillator.cos(&time) + 1.0) / 2.0,
+                );
+                foot_r.translation.y = hip_r.y * leg_r.oscillator.sin(&time);
+            } else {
+                leg_r.last_position = foot_r.translation;
             }
 
             let seg_len = leg_l.length * 0.5;
+
             let knee_l = knee_position(hip_l, foot_l.translation, seg_len);
             let knee_r = knee_position(hip_r, foot_r.translation, seg_len);
 
@@ -272,9 +284,13 @@ fn draw_limb_segment(gizmos: &mut Gizmos, a: Vec3, b: Vec3, length: f32) {
 
 fn knee_position(hip: Vec3, foot: Vec3, segment_length: f32) -> Vec3 {
     let alpha = {
-        let hyp = hip.distance(foot);
-        // simplifying here because a and b sides always same length
-        f32::acos(hyp / (2.0 * segment_length))
+        if hip.distance(foot) >= 2.0 * segment_length {
+            0.0
+        } else {
+            let hyp = hip.distance(foot);
+            // simplifying here because a and b sides always same length
+            f32::acos(hyp / (2.0 * segment_length))
+        }
     };
 
     let theta = {
