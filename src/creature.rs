@@ -61,7 +61,7 @@ struct Creature {
 impl Creature {
     fn new() -> Self {
         Creature {
-            move_speed: 2.0,
+            move_speed: 1.0,
             turn_speed: std::f32::consts::PI,
             target_position: Vec3::ZERO,
             body_segments: Vec::new(),
@@ -74,16 +74,16 @@ fn spawn_creatures(mut commands: Commands) {
 
     for i in 0..1 {
         let transform =
-            Transform::IDENTITY.with_translation(Vec3::new(0.0, 0.25, 0.25 * (i as f32)));
+            Transform::IDENTITY.with_translation(Vec3::new(0.0, 0.5, 0.25 * (i as f32)));
 
         let mut segment = BodySegment::new();
         let leg_l = {
             let oscillator = Oscillator {
-                frequency: 16.0,
+                frequency: 8.0,
                 phase: 0.0 + i as f32 * std::f32::consts::FRAC_PI_3 * 2.0,
             };
             let length = 0.5;
-            let t = transform.with_translation(Vec3::new(-length * 0.5, 0.0, length * 0.5));
+            let t = transform.with_translation(Vec3::new(-segment.radius, 0.0, 0.0));
             let leg = Leg {
                 length,
                 oscillator,
@@ -93,11 +93,11 @@ fn spawn_creatures(mut commands: Commands) {
         };
         let leg_r = {
             let oscillator = Oscillator {
-                frequency: 16.0,
+                frequency: 8.0,
                 phase: std::f32::consts::PI + i as f32 * std::f32::consts::FRAC_PI_3 * 2.0,
             };
             let length = 0.5;
-            let t = transform.with_translation(Vec3::new(-length * 0.5, 0.0, -length * 0.5));
+            let t = transform.with_translation(Vec3::new(segment.radius, 0.0, 0.0));
             let leg = Leg {
                 length,
                 oscillator,
@@ -201,39 +201,37 @@ fn move_legs(
             let hip_r = body_transform.translation + body_transform.right() * body.radius;
 
             if leg_l.oscillator.sin(&time) > 0.0 {
-                let foot_dir = Quat::from_rotation_y(std::f32::consts::FRAC_PI_4)
-                    .mul_vec3(body_transform.forward());
-                let foot_target = hip_l + foot_dir * leg_l.length * 0.9;
+                let foot_target = hip_l + body_transform.forward() * leg_l.length * 0.9;
 
                 foot_l.translation = Vec3::lerp(
                     foot_target,
                     leg_l.last_position,
                     (leg_l.oscillator.cos(&time) + 1.0) / 2.0,
                 );
-                foot_l.translation.y = hip_l.y * leg_l.oscillator.sin(&time);
+                foot_l.translation.y = leg_l.length * 0.25 * leg_l.oscillator.sin(&time);
             } else {
                 leg_l.last_position = foot_l.translation;
             }
 
             if leg_r.oscillator.sin(&time) > 0.0 {
-                let foot_dir = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_4)
-                    .mul_vec3(body_transform.forward());
-                let foot_target = hip_r + foot_dir * leg_r.length * 0.9;
+                let foot_target = hip_r + body_transform.forward() * leg_r.length * 0.9;
 
                 foot_r.translation = Vec3::lerp(
                     foot_target,
                     leg_r.last_position,
                     (leg_r.oscillator.cos(&time) + 1.0) / 2.0,
                 );
-                foot_r.translation.y = hip_r.y * leg_r.oscillator.sin(&time);
+                foot_r.translation.y = leg_r.length * 0.25 * leg_r.oscillator.sin(&time);
             } else {
                 leg_r.last_position = foot_r.translation;
             }
 
             let seg_len = leg_l.length * 0.5;
 
-            let knee_l = knee_position(hip_l, foot_l.translation, seg_len);
-            let knee_r = knee_position(hip_r, foot_r.translation, seg_len);
+            let knee_l =
+                knee_position(hip_l, foot_l.translation, seg_len, body_transform.forward());
+            let knee_r =
+                knee_position(hip_r, foot_r.translation, seg_len, body_transform.forward());
 
             draw_limb_segment(&mut gizmos, hip_l, knee_l, seg_len);
             draw_limb_segment(&mut gizmos, knee_l, foot_l.translation, seg_len);
@@ -254,7 +252,7 @@ fn draw_limb_segment(gizmos: &mut Gizmos, a: Vec3, b: Vec3, length: f32) {
     }
 }
 
-fn knee_position(hip: Vec3, foot: Vec3, segment_length: f32) -> Vec3 {
+fn knee_position(hip: Vec3, foot: Vec3, segment_length: f32, forward: Vec3) -> Vec3 {
     let alpha = {
         if hip.distance(foot) >= 2.0 * segment_length {
             0.0
@@ -269,16 +267,16 @@ fn knee_position(hip: Vec3, foot: Vec3, segment_length: f32) -> Vec3 {
         let mut delta = foot - hip;
         let y = delta.y.abs();
         delta.y = 0.0;
-        let xz = delta.length();
-        (y / xz).atan()
+        let xz = delta.length() * forward.dot(delta.normalize()).signum();
+        (xz / y).atan()
     };
 
-    let (rot_axis, _) = Quat::from_rotation_arc(Vec3::Y, (foot - hip).normalize()).to_axis_angle();
+    let (rot_axis, _) = Quat::from_rotation_arc(-Vec3::Y, forward).to_axis_angle();
 
-    let rotation = Quat::from_axis_angle(rot_axis, (alpha + theta) - std::f32::consts::FRAC_PI_2);
+    let rotation = Quat::from_axis_angle(rot_axis, alpha + theta);
 
-    let mut offset = Vec3::new(0.0, segment_length, 0.0);
+    let mut offset = Vec3::new(0.0, -segment_length, 0.0);
     offset = rotation.mul_vec3(offset);
 
-    return foot + offset;
+    return hip + offset;
 }
