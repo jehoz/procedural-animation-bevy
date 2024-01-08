@@ -6,8 +6,8 @@ pub struct CreaturePlugin;
 impl Plugin for CreaturePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_creatures)
-            .add_systems(Update, move_creatures)
-            .add_systems(Update, move_legs.after(move_creatures));
+            // .add_systems(Update, move_creatures)
+            .add_systems(Update, move_legs);
     }
 }
 
@@ -194,6 +194,12 @@ fn move_legs(
     time: Res<Time>,
 ) {
     for (body, body_transform) in &body_segments {
+        gizmos.sphere(
+            body_transform.translation,
+            body_transform.rotation,
+            body.radius,
+            Color::WHITE,
+        );
         if let Some((ent_l, ent_r)) = body.legs {
             let [(mut leg_l, mut foot_l), (mut leg_r, mut foot_r)] = legs.many_mut([ent_l, ent_r]);
 
