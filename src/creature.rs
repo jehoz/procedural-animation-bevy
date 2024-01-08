@@ -189,11 +189,11 @@ fn move_creatures(
 
 fn move_legs(
     mut gizmos: Gizmos,
-    body_segments: Query<(&BodySegment, &mut Transform)>,
+    mut body_segments: Query<(&BodySegment, &mut Transform)>,
     mut legs: Query<(&mut Leg, &mut Transform), Without<BodySegment>>,
     time: Res<Time>,
 ) {
-    for (body, body_transform) in &body_segments {
+    for (body, mut body_transform) in &mut body_segments {
         gizmos.sphere(
             body_transform.translation,
             body_transform.rotation,
@@ -201,36 +201,38 @@ fn move_legs(
             Color::WHITE,
         );
         if let Some((ent_l, ent_r)) = body.legs {
-            let [(mut leg_l, mut foot_l), (mut leg_r, mut foot_r)] = legs.many_mut([ent_l, ent_r]);
+            let [(leg_l, mut foot_l), (leg_r, mut foot_r)] = legs.many_mut([ent_l, ent_r]);
 
             let hip_l = body_transform.translation + body_transform.left() * body.radius;
             let hip_r = body_transform.translation + body_transform.right() * body.radius;
 
-            if leg_l.oscillator.sin(&time) > 0.0 {
-                let foot_target = hip_l + body_transform.forward() * leg_l.length * 0.9;
+            foot_l.translation = {
+                let scale = leg_l.length * 0.25;
+                let mut offset = body_transform.forward() * leg_l.oscillator.sin(&time) * scale;
+                offset.y = -leg_l.length + f32::max(0.0, leg_l.oscillator.cos(&time)) * scale;
+                hip_l + offset
+            };
+            gizmos.circle(foot_l.translation, Vec3::Y, 0.1, Color::RED);
 
-                foot_l.translation = Vec3::lerp(
-                    foot_target,
-                    leg_l.last_position,
-                    (leg_l.oscillator.cos(&time) + 1.0) / 2.0,
-                );
-                foot_l.translation.y = leg_l.length * 0.25 * leg_l.oscillator.sin(&time);
-            } else {
-                leg_l.last_position = foot_l.translation;
-            }
+            foot_r.translation = {
+                let scale = leg_r.length * 0.25;
+                let mut offset = body_transform.forward() * leg_r.oscillator.sin(&time) * scale;
+                offset.y = -leg_r.length + f32::max(0.0, leg_r.oscillator.cos(&time)) * scale;
+                hip_r + offset
+            };
+            gizmos.circle(foot_r.translation, Vec3::Y, 0.1, Color::RED);
 
-            if leg_r.oscillator.sin(&time) > 0.0 {
-                let foot_target = hip_r + body_transform.forward() * leg_r.length * 0.9;
+            body_transform.translation.y = {
+                let mut delta_l = foot_l.translation - hip_l;
+                delta_l.y = 0.0;
+                let l = leg_l.length * f32::cos(f32::asin(delta_l.length() / leg_l.length));
 
-                foot_r.translation = Vec3::lerp(
-                    foot_target,
-                    leg_r.last_position,
-                    (leg_r.oscillator.cos(&time) + 1.0) / 2.0,
-                );
-                foot_r.translation.y = leg_r.length * 0.25 * leg_r.oscillator.sin(&time);
-            } else {
-                leg_r.last_position = foot_r.translation;
-            }
+                let mut delta_r = foot_r.translation - hip_r;
+                delta_r.y = 0.0;
+                let r = leg_r.length * f32::cos(f32::asin(delta_r.length() / leg_r.length));
+
+                f32::max(l, r)
+            };
 
             let seg_len = leg_l.length * 0.5;
 
