@@ -193,11 +193,11 @@ fn move_creatures(
 
 fn move_legs(
     mut gizmos: Gizmos,
-    mut body_segments: Query<(&BodySegment, &mut Transform)>,
+    mut body_segments: Query<(&BodySegment, &Transform)>,
     mut legs: Query<(&mut Leg, &mut Transform), Without<BodySegment>>,
     time: Res<Time>,
 ) {
-    for (body, mut body_transform) in &mut body_segments {
+    for (body, body_transform) in &mut body_segments {
         gizmos.sphere(
             body_transform.translation,
             body_transform.rotation,
@@ -217,7 +217,7 @@ fn move_legs(
                 pos.y = f32::max(0.0, leg_l.oscillator.cos(&time)) * scale;
                 pos
             };
-            gizmos.circle(toe_l.translation, Vec3::Y, 0.1, Color::RED);
+            gizmos.circle(toe_l.translation, Vec3::Y, 0.025, Color::RED);
 
             toe_r.translation = {
                 let scale = (leg_r.femur_length + leg_r.tibia_length) * 0.25;
@@ -226,7 +226,7 @@ fn move_legs(
                 pos.y = f32::max(0.0, leg_r.oscillator.cos(&time)) * scale;
                 pos
             };
-            gizmos.circle(toe_r.translation, Vec3::Y, 0.1, Color::RED);
+            gizmos.circle(toe_r.translation, Vec3::Y, 0.025, Color::RED);
 
             let (knee_l, ankle_l) =
                 solve_leg_ik(&leg_l, hip_l, toe_l.translation, body_transform.forward());
@@ -265,10 +265,16 @@ fn draw_limb_segment(gizmos: &mut Gizmos, a: Vec3, b: Vec3, length: f32) {
 }
 
 fn solve_leg_ik(leg: &Leg, hip: Vec3, toe: Vec3, forward: Vec3) -> (Vec3, Vec3) {
+    let ankle_lift = {
+        let hip_to_toe = toe - hip;
+        let xz = hip_to_toe.xz().length() * forward.xz().dot(hip_to_toe.xz()).signum();
+        leg.ankle_lift + (xz / hip_to_toe.y).atan()
+    };
+
     let ankle = {
         let mut offset = -forward * leg.metatarsal_length;
         let (axis, _) = Quat::from_rotation_arc(-forward, Vec3::Y).to_axis_angle();
-        offset = Quat::from_axis_angle(axis, leg.ankle_lift).mul_vec3(offset);
+        offset = Quat::from_axis_angle(axis, ankle_lift).mul_vec3(offset);
         toe + offset
     };
 
