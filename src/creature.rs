@@ -11,6 +11,7 @@ impl Plugin for CreaturePlugin {
     }
 }
 
+#[derive(Component)]
 struct Oscillator {
     frequency: f32,
     phase: f32,
@@ -32,7 +33,6 @@ struct Leg {
     tibia_length: f32,
     metatarsal_length: f32,
     ankle_lift: f32,
-    oscillator: Oscillator,
 }
 
 #[derive(Component)]
@@ -90,9 +90,8 @@ fn spawn_creatures(mut commands: Commands) {
                 tibia_length: 0.225,
                 metatarsal_length: 0.175,
                 ankle_lift: std::f32::consts::PI * 0.4,
-                oscillator,
             };
-            commands.spawn((leg, t)).id()
+            commands.spawn((leg, t, oscillator)).id()
         };
         let leg_r = {
             let oscillator = Oscillator {
@@ -105,9 +104,8 @@ fn spawn_creatures(mut commands: Commands) {
                 tibia_length: 0.225,
                 metatarsal_length: 0.175,
                 ankle_lift: std::f32::consts::PI * 0.4,
-                oscillator,
             };
-            commands.spawn((leg, t)).id()
+            commands.spawn((leg, t, oscillator)).id()
         };
         segment.legs = Some((leg_l, leg_r));
         let segment_ent = commands.spawn((segment, transform)).id();
@@ -194,7 +192,7 @@ fn move_creatures(
 fn move_legs(
     mut gizmos: Gizmos,
     mut body_segments: Query<(&BodySegment, &Transform)>,
-    mut legs: Query<(&mut Leg, &mut Transform), Without<BodySegment>>,
+    mut legs: Query<(&mut Leg, &mut Transform, &Oscillator), Without<BodySegment>>,
     time: Res<Time>,
 ) {
     for (body, body_transform) in &mut body_segments {
@@ -205,25 +203,24 @@ fn move_legs(
             Color::WHITE,
         );
         if let Some((ent_l, ent_r)) = body.legs {
-            let [(leg_l, mut toe_l), (leg_r, mut toe_r)] = legs.many_mut([ent_l, ent_r]);
+            let [(leg_l, mut toe_l, osc_l), (leg_r, mut toe_r, osc_r)] =
+                legs.many_mut([ent_l, ent_r]);
 
             let hip_l = body_transform.translation + body_transform.left() * body.radius;
             let hip_r = body_transform.translation + body_transform.right() * body.radius;
 
             toe_l.translation = {
                 let scale = (leg_l.femur_length + leg_l.tibia_length) * 0.25;
-                let mut pos =
-                    hip_l + body_transform.forward() * leg_l.oscillator.sin(&time) * scale;
-                pos.y = f32::max(0.0, leg_l.oscillator.cos(&time)) * scale;
+                let mut pos = hip_l + body_transform.forward() * osc_l.sin(&time) * scale;
+                pos.y = f32::max(0.0, osc_l.cos(&time)) * scale;
                 pos
             };
             gizmos.circle(toe_l.translation, Vec3::Y, 0.025, Color::RED);
 
             toe_r.translation = {
                 let scale = (leg_r.femur_length + leg_r.tibia_length) * 0.25;
-                let mut pos =
-                    hip_r + body_transform.forward() * leg_r.oscillator.sin(&time) * scale;
-                pos.y = f32::max(0.0, leg_r.oscillator.cos(&time)) * scale;
+                let mut pos = hip_r + body_transform.forward() * osc_r.sin(&time) * scale;
+                pos.y = f32::max(0.0, osc_r.cos(&time)) * scale;
                 pos
             };
             gizmos.circle(toe_r.translation, Vec3::Y, 0.025, Color::RED);
