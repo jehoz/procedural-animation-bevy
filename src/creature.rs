@@ -27,7 +27,7 @@ impl Oscillator {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 struct Leg {
     femur_length: f32,
     tibia_length: f32,
@@ -35,6 +35,30 @@ struct Leg {
     toe_length: f32,
     ankle_lift: f32,
 }
+
+const PLANTIGRADE_LEG: Leg = Leg {
+    femur_length: 0.5,
+    tibia_length: 0.5,
+    metatarsal_length: 0.1,
+    toe_length: 0.1,
+    ankle_lift: 0.0,
+};
+
+const DIGITIGRADE_LEG: Leg = Leg {
+    femur_length: 0.5,
+    tibia_length: 0.45,
+    metatarsal_length: 0.3,
+    toe_length: 0.2,
+    ankle_lift: 0.8,
+};
+
+const UNGULIGRADE_LEG: Leg = Leg {
+    femur_length: 0.5,
+    tibia_length: 0.5,
+    metatarsal_length: 0.5,
+    toe_length: 0.0,
+    ankle_lift: 1.28,
+};
 
 #[derive(Component)]
 struct BodySegment {
@@ -73,47 +97,38 @@ impl Creature {
 }
 
 fn spawn_creatures(mut commands: Commands) {
-    let mut creature = Creature::new();
-
-    for i in 0..1 {
+    // Creature with plantigrade legs
+    for (i, leg_type) in vec![PLANTIGRADE_LEG, DIGITIGRADE_LEG, UNGULIGRADE_LEG]
+        .iter()
+        .enumerate()
+    {
+        let mut creature = Creature::new();
         let transform =
-            Transform::IDENTITY.with_translation(Vec3::new(0.0, 0.5, 0.25 * (i as f32)));
+            Transform::IDENTITY.with_translation(Vec3::new(-1.0 + i as f32 * 1.0, 1.0, 0.25));
 
         let mut segment = BodySegment::new();
         let leg_l = {
             let oscillator = Oscillator {
                 frequency: 5.0,
-                phase: 0.0 + i as f32 * std::f32::consts::FRAC_PI_3 * 2.0,
+                phase: 0.0,
             };
             let t = transform.with_translation(Vec3::new(-segment.radius, 0.0, 0.0));
-            let leg = Leg {
-                femur_length: 0.25,
-                tibia_length: 0.225,
-                metatarsal_length: 0.175,
-                ankle_lift: std::f32::consts::PI * 0.4,
-            };
-            commands.spawn((leg, t, oscillator)).id()
+            commands.spawn((leg_type.clone(), t, oscillator)).id()
         };
         let leg_r = {
             let oscillator = Oscillator {
                 frequency: 5.0,
-                phase: std::f32::consts::PI + i as f32 * std::f32::consts::FRAC_PI_3 * 2.0,
+                phase: std::f32::consts::PI,
             };
             let t = transform.with_translation(Vec3::new(segment.radius, 0.0, 0.0));
-            let leg = Leg {
-                femur_length: 0.25,
-                tibia_length: 0.225,
-                metatarsal_length: 0.175,
-                ankle_lift: std::f32::consts::PI * 0.4,
-            };
-            commands.spawn((leg, t, oscillator)).id()
+            commands.spawn((leg_type.clone(), t, oscillator)).id()
         };
         segment.legs = Some((leg_l, leg_r));
         let segment_ent = commands.spawn((segment, transform)).id();
         creature.body_segments.push(segment_ent);
-    }
 
-    commands.spawn(creature);
+        commands.spawn(creature);
+    }
 }
 
 fn move_creatures(
