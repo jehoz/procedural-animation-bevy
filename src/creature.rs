@@ -32,6 +32,7 @@ struct Leg {
     femur_length: f32,
     tibia_length: f32,
     metatarsal_length: f32,
+    toe_length: f32,
     ankle_lift: f32,
 }
 
@@ -238,6 +239,11 @@ fn move_legs(
                 toe_l.translation,
                 leg_l.metatarsal_length,
             );
+            gizmos.ray(
+                toe_l.translation,
+                body_transform.forward() * leg_l.toe_length,
+                Color::WHITE,
+            );
 
             draw_limb_segment(&mut gizmos, hip_r, knee_r, leg_r.femur_length);
             draw_limb_segment(&mut gizmos, knee_r, ankle_r, leg_r.tibia_length);
@@ -246,6 +252,11 @@ fn move_legs(
                 ankle_r,
                 toe_r.translation,
                 leg_r.metatarsal_length,
+            );
+            gizmos.ray(
+                toe_r.translation,
+                body_transform.forward() * leg_r.toe_length,
+                Color::WHITE,
             );
         }
     }
