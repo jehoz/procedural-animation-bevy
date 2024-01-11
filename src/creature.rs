@@ -219,57 +219,55 @@ fn move_legs(
             Color::WHITE,
         );
         if let Some((ent_l, ent_r)) = body.legs {
-            let [(leg_l, mut toe_l, osc_l), (leg_r, mut toe_r, osc_r)] =
+            let [(leg_l, mut target_l, osc_l), (leg_r, mut target_r, osc_r)] =
                 legs.many_mut([ent_l, ent_r]);
 
             let hip_l = body_transform.translation + body_transform.left() * body.radius;
             let hip_r = body_transform.translation + body_transform.right() * body.radius;
 
-            toe_l.translation = {
+            target_l.translation = {
                 let scale = (leg_l.femur_length + leg_l.tibia_length) * 0.25;
                 let mut pos = hip_l + body_transform.forward() * osc_l.sin(&time) * scale;
                 pos.y = f32::max(0.0, osc_l.cos(&time)) * scale;
                 pos
             };
-            gizmos.circle(toe_l.translation, Vec3::Y, 0.025, Color::RED);
+            gizmos.circle(target_l.translation, Vec3::Y, 0.025, Color::RED);
 
-            toe_r.translation = {
+            target_r.translation = {
                 let scale = (leg_r.femur_length + leg_r.tibia_length) * 0.25;
                 let mut pos = hip_r + body_transform.forward() * osc_r.sin(&time) * scale;
                 pos.y = f32::max(0.0, osc_r.cos(&time)) * scale;
                 pos
             };
-            gizmos.circle(toe_r.translation, Vec3::Y, 0.025, Color::RED);
+            gizmos.circle(target_r.translation, Vec3::Y, 0.025, Color::RED);
 
-            let (knee_l, ankle_l) =
-                solve_leg_ik(&leg_l, hip_l, toe_l.translation, body_transform.forward());
-            let (knee_r, ankle_r) =
-                solve_leg_ik(&leg_r, hip_r, toe_r.translation, body_transform.forward());
+            let (knee_l, ankle_l, toe_l) = solve_leg_ik(
+                &leg_l,
+                hip_l,
+                target_l.translation,
+                body_transform.forward(),
+            );
+            let (knee_r, ankle_r, toe_r) = solve_leg_ik(
+                &leg_r,
+                hip_r,
+                target_r.translation,
+                body_transform.forward(),
+            );
 
             draw_limb_segment(&mut gizmos, hip_l, knee_l, leg_l.femur_length);
             draw_limb_segment(&mut gizmos, knee_l, ankle_l, leg_l.tibia_length);
-            draw_limb_segment(
-                &mut gizmos,
-                ankle_l,
-                toe_l.translation,
-                leg_l.metatarsal_length,
-            );
+            draw_limb_segment(&mut gizmos, ankle_l, toe_l, leg_l.metatarsal_length);
             gizmos.ray(
-                toe_l.translation,
+                toe_l,
                 body_transform.forward() * leg_l.toe_length,
                 Color::WHITE,
             );
 
             draw_limb_segment(&mut gizmos, hip_r, knee_r, leg_r.femur_length);
             draw_limb_segment(&mut gizmos, knee_r, ankle_r, leg_r.tibia_length);
-            draw_limb_segment(
-                &mut gizmos,
-                ankle_r,
-                toe_r.translation,
-                leg_r.metatarsal_length,
-            );
+            draw_limb_segment(&mut gizmos, ankle_r, toe_r, leg_r.metatarsal_length);
             gizmos.ray(
-                toe_r.translation,
+                toe_r,
                 body_transform.forward() * leg_r.toe_length,
                 Color::WHITE,
             );
@@ -287,7 +285,14 @@ fn draw_limb_segment(gizmos: &mut Gizmos, a: Vec3, b: Vec3, length: f32) {
     }
 }
 
-fn solve_leg_ik(leg: &Leg, hip: Vec3, toe: Vec3, forward: Vec3) -> (Vec3, Vec3) {
+fn solve_leg_ik(leg: &Leg, hip: Vec3, foot_target: Vec3, forward: Vec3) -> (Vec3, Vec3, Vec3) {
+    let toe = {
+        let ankle_lift_percent =
+            (1.0 - (leg.ankle_lift / std::f32::consts::FRAC_PI_2)).clamp(0.0, 1.0);
+        let offset = ankle_lift_percent * (leg.ankle_lift.cos() * leg.metatarsal_length) * forward;
+        foot_target + offset
+    };
+
     let ankle_lift = {
         let hip_to_toe = toe - hip;
         let xz = hip_to_toe.xz().length() * forward.xz().dot(hip_to_toe.xz()).signum();
@@ -320,5 +325,5 @@ fn solve_leg_ik(leg: &Leg, hip: Vec3, toe: Vec3, forward: Vec3) -> (Vec3, Vec3) 
     let mut offset = (ankle - hip).normalize() * leg.femur_length;
     offset = rotation.mul_vec3(offset);
 
-    return (hip + offset, ankle);
+    return (hip + offset, ankle, toe);
 }
