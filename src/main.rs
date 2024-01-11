@@ -5,6 +5,12 @@ use creature::CreaturePlugin;
 
 mod creature;
 
+#[derive(Component)]
+struct OrbitingCamera {
+    pub target: Vec3,
+    pub speed: f32,
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -13,6 +19,7 @@ fn main() {
         )
         .add_plugins(CreaturePlugin)
         .add_systems(Startup, setup_scene)
+        .add_systems(Update, update_orbiting_camera)
         .run();
 }
 
@@ -32,10 +39,16 @@ fn setup_scene(
         ..default()
     });
 
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(5.0, 2.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    });
+    commands.spawn((
+        Camera3dBundle {
+            transform: Transform::from_xyz(5.0, 2.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
+            ..default()
+        },
+        OrbitingCamera {
+            target: Vec3::ZERO,
+            speed: 0.2,
+        },
+    ));
 
     // ground plane
     commands.spawn(PbrBundle {
@@ -43,4 +56,14 @@ fn setup_scene(
         material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
         ..default()
     });
+}
+
+fn update_orbiting_camera(mut query: Query<(&OrbitingCamera, &mut Transform)>, time: Res<Time>) {
+    for (orbit, mut transform) in query.iter_mut() {
+        transform.rotate_around(
+            orbit.target,
+            Quat::from_rotation_y(time.delta_seconds() * orbit.speed),
+        );
+        transform.look_at(orbit.target, Vec3::Y);
+    }
 }
