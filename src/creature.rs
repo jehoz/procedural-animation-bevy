@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use rand::prelude::*;
+use std::f32::consts::*;
 
 pub struct CreaturePlugin;
 
@@ -18,12 +19,33 @@ struct Oscillator {
 }
 
 impl Oscillator {
+    fn with_offset(&self, offset: f32) -> Self {
+        Oscillator {
+            frequency: self.frequency,
+            phase: self.phase + offset,
+        }
+    }
+
+    /// Samples the oscillator as a normal sine wave.
     fn sin(&self, t: &Time) -> f32 {
         (self.frequency * t.elapsed_seconds() + self.phase).sin()
     }
 
-    fn cos(&self, t: &Time) -> f32 {
-        (self.frequency * t.elapsed_seconds() + self.phase).cos()
+    /// Samples the oscillator as a skewed sine wave.
+    ///
+    /// The `skew` parameter should be a value in the range [-1, 1] and shifts the peak of the sine
+    /// wave to the left or the right.
+    /// When `skew` is 0, the wave is a normal sine wave.  At a `skew` of 1, the sine wave is
+    /// skewed all the way to the right, resulting in an ascending sawtooth wave, and at -1 it
+    /// becomes a _descending_ sawtooth wave.
+    fn skewed(&self, t: &Time, skew: f32) -> f32 {
+        // equation is undefined for
+        if skew == 0.0 {
+            return self.sin(t);
+        }
+        let x = self.frequency * t.elapsed_seconds() + self.phase;
+        let skew = skew.clamp(-1.0, 1.0);
+        (1.0 / skew) * f32::atan((skew * f32::sin(x)) / (1.0 - skew * f32::cos(x)))
     }
 }
 
@@ -89,7 +111,7 @@ impl Creature {
     fn new() -> Self {
         Creature {
             move_speed: 1.0,
-            turn_speed: std::f32::consts::PI,
+            turn_speed: PI,
             target_position: Vec3::ZERO,
             body_segments: Vec::new(),
         }
@@ -118,7 +140,7 @@ fn spawn_creatures(mut commands: Commands) {
         let leg_r = {
             let oscillator = Oscillator {
                 frequency: 5.0,
-                phase: std::f32::consts::PI,
+                phase: PI,
             };
             let t = transform.with_translation(Vec3::new(segment.radius, 0.0, 0.0));
             commands.spawn((leg_type.clone(), t, oscillator)).id()
@@ -227,16 +249,16 @@ fn move_legs(
 
             target_l.translation = {
                 let scale = (leg_l.femur_length + leg_l.tibia_length) * 0.25;
-                let mut pos = hip_l + body_transform.forward() * osc_l.sin(&time) * scale;
-                pos.y = f32::max(0.0, osc_l.cos(&time)) * scale;
+                let mut pos = hip_l + body_transform.forward() * osc_l.skewed(&time, 0.5) * scale;
+                pos.y = f32::max(0.0, osc_l.with_offset(FRAC_PI_2).skewed(&time, 0.25)) * scale;
                 pos
             };
             gizmos.circle(target_l.translation, Vec3::Y, 0.025, Color::RED);
 
             target_r.translation = {
                 let scale = (leg_r.femur_length + leg_r.tibia_length) * 0.25;
-                let mut pos = hip_r + body_transform.forward() * osc_r.sin(&time) * scale;
-                pos.y = f32::max(0.0, osc_r.cos(&time)) * scale;
+                let mut pos = hip_r + body_transform.forward() * osc_r.skewed(&time, 0.5) * scale;
+                pos.y = f32::max(0.0, osc_r.with_offset(FRAC_PI_2).skewed(&time, 0.25)) * scale;
                 pos
             };
             gizmos.circle(target_r.translation, Vec3::Y, 0.025, Color::RED);
@@ -287,8 +309,7 @@ fn draw_limb_segment(gizmos: &mut Gizmos, a: Vec3, b: Vec3, length: f32) {
 
 fn solve_leg_ik(leg: &Leg, hip: Vec3, foot_target: Vec3, forward: Vec3) -> (Vec3, Vec3, Vec3) {
     let toe = {
-        let ankle_lift_percent =
-            (1.0 - (leg.ankle_lift / std::f32::consts::FRAC_PI_2)).clamp(0.0, 1.0);
+        let ankle_lift_percent = (1.0 - (leg.ankle_lift / FRAC_PI_2)).clamp(0.0, 1.0);
         let offset = ankle_lift_percent * (leg.ankle_lift.cos() * leg.metatarsal_length) * forward;
         foot_target + offset
     };
