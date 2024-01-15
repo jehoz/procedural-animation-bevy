@@ -60,7 +60,7 @@ struct Leg {
 
 const PLANTIGRADE_LEG: Leg = Leg {
     femur_length: 0.5,
-    tibia_length: 0.5,
+    tibia_length: 0.51,
     metatarsal_length: 0.1,
     toe_length: 0.1,
     ankle_lift: 0.0,
@@ -263,13 +263,13 @@ fn move_legs(
             };
             gizmos.circle(target_r.translation, Vec3::Y, 0.025, Color::RED);
 
-            let (knee_l, ankle_l, toe_l) = solve_leg_ik(
+            let (knee_l, ankle_l, ball_l, toe_l) = solve_leg_ik(
                 &leg_l,
                 hip_l,
                 target_l.translation,
                 body_transform.forward(),
             );
-            let (knee_r, ankle_r, toe_r) = solve_leg_ik(
+            let (knee_r, ankle_r, ball_r, toe_r) = solve_leg_ik(
                 &leg_r,
                 hip_r,
                 target_r.translation,
@@ -278,21 +278,13 @@ fn move_legs(
 
             draw_limb_segment(&mut gizmos, hip_l, knee_l, leg_l.femur_length);
             draw_limb_segment(&mut gizmos, knee_l, ankle_l, leg_l.tibia_length);
-            draw_limb_segment(&mut gizmos, ankle_l, toe_l, leg_l.metatarsal_length);
-            gizmos.ray(
-                toe_l,
-                body_transform.forward() * leg_l.toe_length,
-                Color::WHITE,
-            );
+            draw_limb_segment(&mut gizmos, ankle_l, ball_l, leg_l.metatarsal_length);
+            draw_limb_segment(&mut gizmos, ball_l, toe_l, leg_l.toe_length);
 
             draw_limb_segment(&mut gizmos, hip_r, knee_r, leg_r.femur_length);
             draw_limb_segment(&mut gizmos, knee_r, ankle_r, leg_r.tibia_length);
-            draw_limb_segment(&mut gizmos, ankle_r, toe_r, leg_r.metatarsal_length);
-            gizmos.ray(
-                toe_r,
-                body_transform.forward() * leg_r.toe_length,
-                Color::WHITE,
-            );
+            draw_limb_segment(&mut gizmos, ankle_r, ball_r, leg_r.metatarsal_length);
+            draw_limb_segment(&mut gizmos, ball_r, toe_r, leg_r.toe_length);
         }
     }
 }
@@ -307,24 +299,39 @@ fn draw_limb_segment(gizmos: &mut Gizmos, a: Vec3, b: Vec3, length: f32) {
     }
 }
 
-fn solve_leg_ik(leg: &Leg, hip: Vec3, foot_target: Vec3, forward: Vec3) -> (Vec3, Vec3, Vec3) {
-    let toe = {
+fn solve_leg_ik(
+    leg: &Leg,
+    hip: Vec3,
+    foot_target: Vec3,
+    forward: Vec3,
+) -> (Vec3, Vec3, Vec3, Vec3) {
+    let ball = {
         let ankle_lift_percent = (1.0 - (leg.ankle_lift / FRAC_PI_2)).clamp(0.0, 1.0);
         let offset = ankle_lift_percent * (leg.ankle_lift.cos() * leg.metatarsal_length) * forward;
         foot_target + offset
     };
 
     let ankle_lift = {
-        let hip_to_toe = toe - hip;
-        let xz = hip_to_toe.xz().length() * forward.xz().dot(hip_to_toe.xz()).signum();
-        leg.ankle_lift + (xz / hip_to_toe.y).atan()
+        let hip_to_ball = ball - hip;
+        let xz = hip_to_ball.xz().length() * forward.xz().dot(hip_to_ball.xz()).signum();
+        leg.ankle_lift + (xz / hip_to_ball.y).atan()
     };
 
     let ankle = {
         let mut offset = -forward * leg.metatarsal_length;
         let (axis, _) = Quat::from_rotation_arc(-forward, Vec3::Y).to_axis_angle();
         offset = Quat::from_axis_angle(axis, ankle_lift).mul_vec3(offset);
-        toe + offset
+        ball + offset
+    };
+
+    let toe = {
+        let ankle_to_ball = ball - ankle;
+        let xz = ankle_to_ball.xz().length() * forward.xz().dot(ankle_to_ball.xz()).signum();
+        let toe_angle = (ankle_to_ball.y / xz).atan().max(0.0);
+        let (axis, _) = Quat::from_rotation_arc(forward, Vec3::Y).to_axis_angle();
+        let mut offset = forward * leg.toe_length;
+        offset = Quat::from_axis_angle(axis, toe_angle).mul_vec3(offset);
+        ball + offset
     };
 
     let gamma = {
@@ -346,5 +353,5 @@ fn solve_leg_ik(leg: &Leg, hip: Vec3, foot_target: Vec3, forward: Vec3) -> (Vec3
     let mut offset = (ankle - hip).normalize() * leg.femur_length;
     offset = rotation.mul_vec3(offset);
 
-    return (hip + offset, ankle, toe);
+    return (hip + offset, ankle, ball, toe);
 }
