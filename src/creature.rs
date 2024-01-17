@@ -39,13 +39,27 @@ impl Oscillator {
     /// skewed all the way to the right, resulting in an ascending sawtooth wave, and at -1 it
     /// becomes a _descending_ sawtooth wave.
     fn skewed(&self, t: &Time, skew: f32) -> f32 {
-        // equation is undefined for
+        // equation is undefined for skew=0, but the limit as it approaches 0 is a normal sine wave
         if skew == 0.0 {
             return self.sin(t);
         }
         let x = self.frequency * t.elapsed_seconds() + self.phase;
         let skew = skew.clamp(-1.0, 1.0);
         (1.0 / skew) * f32::atan((skew * f32::sin(x)) / (1.0 - skew * f32::cos(x)))
+    }
+
+    /// Samples the oscillator as sine wave whose positive and negative portions are asymmetric.
+    ///
+    /// The bias parameter is any real number in the range (-inf, inf) and controls how much the
+    /// wave is shifted negatively or positively.
+    fn asymmetric(&self, t: &Time, bias: f32) -> f32 {
+        // equation is undefined for bias=0, but the limit as it approaches 0 is a normal sine wave
+        if bias == 0.0 {
+            return self.sin(t);
+        }
+        let x = self.frequency * t.elapsed_seconds() + self.phase;
+        let k = 2_f32.powf(-bias);
+        (2.0 * (k.powf(x.sin() + 1.0) - 1.0)) / (k.powi(2) - 1.0) - 1.0
     }
 }
 
@@ -250,7 +264,7 @@ fn move_legs(
             target_l.translation = {
                 let scale = (leg_l.femur_length + leg_l.tibia_length) * 0.25;
                 let mut pos = hip_l + body_transform.forward() * osc_l.skewed(&time, 0.5) * scale;
-                pos.y = f32::max(0.0, osc_l.with_offset(FRAC_PI_2).skewed(&time, 0.25)) * scale;
+                pos.y = f32::max(0.0, osc_l.with_offset(FRAC_PI_2).asymmetric(&time, 1.0)) * scale;
                 pos
             };
             gizmos.circle(target_l.translation, Vec3::Y, 0.025, Color::RED);
@@ -258,7 +272,7 @@ fn move_legs(
             target_r.translation = {
                 let scale = (leg_r.femur_length + leg_r.tibia_length) * 0.25;
                 let mut pos = hip_r + body_transform.forward() * osc_r.skewed(&time, 0.5) * scale;
-                pos.y = f32::max(0.0, osc_r.with_offset(FRAC_PI_2).skewed(&time, 0.25)) * scale;
+                pos.y = f32::max(0.0, osc_r.with_offset(FRAC_PI_2).asymmetric(&time, 1.0)) * scale;
                 pos
             };
             gizmos.circle(target_r.translation, Vec3::Y, 0.025, Color::RED);
