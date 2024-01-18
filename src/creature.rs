@@ -72,6 +72,12 @@ struct Leg {
     ankle_lift: f32,
 }
 
+impl Leg {
+    fn max_length(&self) -> f32 {
+        self.femur_length + self.tibia_length + self.metatarsal_length * self.ankle_lift.cos()
+    }
+}
+
 const PLANTIGRADE_LEG: Leg = Leg {
     femur_length: 0.5,
     tibia_length: 0.51,
@@ -243,11 +249,11 @@ fn move_creatures(
 
 fn move_legs(
     mut gizmos: Gizmos,
-    mut body_segments: Query<(&BodySegment, &Transform)>,
+    mut body_segments: Query<(&BodySegment, &mut Transform)>,
     mut legs: Query<(&mut Leg, &mut Transform, &Oscillator), Without<BodySegment>>,
     time: Res<Time>,
 ) {
-    for (body, body_transform) in &mut body_segments {
+    for (body, mut body_transform) in &mut body_segments {
         gizmos.sphere(
             body_transform.translation,
             body_transform.rotation,
@@ -258,21 +264,34 @@ fn move_legs(
             let [(leg_l, mut target_l, osc_l), (leg_r, mut target_r, osc_r)] =
                 legs.many_mut([ent_l, ent_r]);
 
+            let b_osc = Oscillator {
+                frequency: osc_l.frequency * 2.0,
+                phase: 0.9306,
+            };
+            body_transform.translation.y =
+                0.9 * leg_l.max_length() - 0.025 * b_osc.asymmetric(&time, 1.0);
+
             let hip_l = body_transform.translation + body_transform.left() * body.radius;
             let hip_r = body_transform.translation + body_transform.right() * body.radius;
 
             target_l.translation = {
-                let scale = (leg_l.femur_length + leg_l.tibia_length) * 0.25;
-                let mut pos = hip_l + body_transform.forward() * osc_l.skewed(&time, 0.5) * scale;
-                pos.y = f32::max(0.0, osc_l.with_offset(FRAC_PI_2).asymmetric(&time, 1.0)) * scale;
+                let step_height = leg_l.max_length() * 0.125;
+                let step_distance = step_height * 2.0;
+                let mut pos =
+                    hip_l + body_transform.forward() * osc_l.skewed(&time, 0.5) * step_distance;
+                pos.y = f32::max(0.0, osc_l.with_offset(FRAC_PI_2).asymmetric(&time, -1.0))
+                    * step_height;
                 pos
             };
             gizmos.circle(target_l.translation, Vec3::Y, 0.025, Color::RED);
 
             target_r.translation = {
-                let scale = (leg_r.femur_length + leg_r.tibia_length) * 0.25;
-                let mut pos = hip_r + body_transform.forward() * osc_r.skewed(&time, 0.5) * scale;
-                pos.y = f32::max(0.0, osc_r.with_offset(FRAC_PI_2).asymmetric(&time, 1.0)) * scale;
+                let step_height = leg_r.max_length() * 0.125;
+                let step_distance = step_height * 2.0;
+                let mut pos =
+                    hip_r + body_transform.forward() * osc_r.skewed(&time, 0.5) * step_distance;
+                pos.y = f32::max(0.0, osc_r.with_offset(FRAC_PI_2).asymmetric(&time, -1.0))
+                    * step_height;
                 pos
             };
             gizmos.circle(target_r.translation, Vec3::Y, 0.025, Color::RED);
