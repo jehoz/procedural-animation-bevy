@@ -105,7 +105,6 @@ const UNGULIGRADE_LEG: Leg = Leg {
 #[derive(Component)]
 struct BodySegment {
     radius: f32,
-    distance_to_parent: f32,
     legs: Option<(Entity, Entity)>,
 }
 
@@ -113,7 +112,6 @@ impl BodySegment {
     fn new() -> Self {
         BodySegment {
             radius: 0.2,
-            distance_to_parent: 0.3,
             legs: None,
         }
     }
@@ -139,113 +137,119 @@ impl Creature {
 }
 
 fn spawn_creatures(mut commands: Commands) {
-    // Creature with plantigrade legs
     for (i, leg_type) in vec![PLANTIGRADE_LEG, DIGITIGRADE_LEG, UNGULIGRADE_LEG]
         .iter()
         .enumerate()
     {
         let mut creature = Creature::new();
-        let transform =
-            Transform::IDENTITY.with_translation(Vec3::new(-1.0 + i as f32 * 1.0, 1.0, 0.25));
 
-        let mut segment = BodySegment::new();
-        let leg_l = {
-            let oscillator = Oscillator {
-                frequency: 5.0,
-                phase: 0.0,
-            };
-            let t = transform.with_translation(Vec3::new(-segment.radius, 0.0, 0.0));
-            commands.spawn((leg_type.clone(), t, oscillator)).id()
-        };
-        let leg_r = {
-            let oscillator = Oscillator {
-                frequency: 5.0,
-                phase: PI,
-            };
-            let t = transform.with_translation(Vec3::new(segment.radius, 0.0, 0.0));
-            commands.spawn((leg_type.clone(), t, oscillator)).id()
-        };
-        segment.legs = Some((leg_l, leg_r));
-        let segment_ent = commands.spawn((segment, transform)).id();
-        creature.body_segments.push(segment_ent);
+        for s in 0..3 {
+            let transform = Transform::IDENTITY.with_translation(Vec3::new(
+                -1.5 + i as f32 * 1.5,
+                1.0,
+                0.25 + -0.5 * s as f32,
+            ));
+            let mut segment = BodySegment::new();
+            if s == 0 || s == 2 {
+                let leg_l = {
+                    let oscillator = Oscillator {
+                        frequency: 5.0,
+                        phase: 0.0,
+                    };
+                    let t = transform.with_translation(Vec3::new(-segment.radius, 0.0, 0.0));
+                    commands.spawn((leg_type.clone(), t, oscillator)).id()
+                };
+                let leg_r = {
+                    let oscillator = Oscillator {
+                        frequency: 5.0,
+                        phase: PI,
+                    };
+                    let t = transform.with_translation(Vec3::new(segment.radius, 0.0, 0.0));
+                    commands.spawn((leg_type.clone(), t, oscillator)).id()
+                };
+                segment.legs = Some((leg_l, leg_r));
+            }
+            let segment_ent = commands.spawn((segment, transform)).id();
+            creature.body_segments.push(segment_ent);
+        }
 
         commands.spawn(creature);
     }
 }
 
-fn move_creatures(
-    mut gizmos: Gizmos,
-    mut creatures: Query<&mut Creature>,
-    mut body_segments: Query<(&BodySegment, &mut Transform)>,
-    time: Res<Time>,
-) {
-    for mut creature in &mut creatures {
-        let (head, mut head_transform) = body_segments.get_mut(creature.body_segments[0]).unwrap();
+// fn move_creatures(
+//     mut gizmos: Gizmos,
+//     mut creatures: Query<&mut Creature>,
+//     mut body_segments: Query<(&BodySegment, &mut Transform)>,
+//     time: Res<Time>,
+// ) {
+//     for mut creature in &mut creatures {
+//         let (head, mut head_transform) = body_segments.get_mut(creature.body_segments[0]).unwrap();
 
-        // if reached target position, choose a new one randomly
-        if head_transform
-            .translation
-            .xz()
-            .distance(creature.target_position.xz())
-            < 0.5
-        {
-            creature.target_position = Vec3 {
-                x: (random::<f32>() * 10.0) - 5.0,
-                y: head_transform.translation.y,
-                z: (random::<f32>() * 10.0) - 5.0,
-            };
-        }
+//         // if reached target position, choose a new one randomly
+//         if head_transform
+//             .translation
+//             .xz()
+//             .distance(creature.target_position.xz())
+//             < 0.5
+//         {
+//             creature.target_position = Vec3 {
+//                 x: (random::<f32>() * 10.0) - 5.0,
+//                 y: head_transform.translation.y,
+//                 z: (random::<f32>() * 10.0) - 5.0,
+//             };
+//         }
 
-        gizmos.circle(creature.target_position, Vec3::Y, 0.25, Color::RED);
+//         gizmos.circle(creature.target_position, Vec3::Y, 0.25, Color::RED);
 
-        // turn head towards target
-        let target_dir =
-            (head_transform.translation.xz() - creature.target_position.xz()).normalize();
-        let (_, _, mut y_rot) =
-            Quat::from_rotation_arc_2d(head_transform.forward().xz(), target_dir)
-                .to_euler(EulerRot::XYZ);
-        let max_turn = creature.turn_speed * time.delta_seconds();
-        y_rot = y_rot.clamp(-max_turn, max_turn);
-        head_transform.rotate(Quat::from_rotation_y(y_rot));
+//         // turn head towards target
+//         let target_dir =
+//             (head_transform.translation.xz() - creature.target_position.xz()).normalize();
+//         let (_, _, mut y_rot) =
+//             Quat::from_rotation_arc_2d(head_transform.forward().xz(), target_dir)
+//                 .to_euler(EulerRot::XYZ);
+//         let max_turn = creature.turn_speed * time.delta_seconds();
+//         y_rot = y_rot.clamp(-max_turn, max_turn);
+//         head_transform.rotate(Quat::from_rotation_y(y_rot));
 
-        // move head forward
-        let movement = head_transform.forward() * creature.move_speed * time.delta_seconds();
-        head_transform.translation += movement;
+//         // move head forward
+//         let movement = head_transform.forward() * creature.move_speed * time.delta_seconds();
+//         head_transform.translation += movement;
 
-        gizmos.sphere(
-            head_transform.translation,
-            head_transform.rotation,
-            head.radius,
-            Color::WHITE,
-        );
+//         gizmos.sphere(
+//             head_transform.translation,
+//             head_transform.rotation,
+//             head.radius,
+//             Color::WHITE,
+//         );
 
-        // move each trailing body segment towards the one ahead of it
-        for i in 1..creature.body_segments.len() {
-            let [(current, mut current_transform), (_, parent_transform)] =
-                body_segments.many_mut([creature.body_segments[i], creature.body_segments[i - 1]]);
+//         // move each trailing body segment towards the one ahead of it
+//         for i in 1..creature.body_segments.len() {
+//             let [(current, mut current_transform), (_, parent_transform)] =
+//                 body_segments.many_mut([creature.body_segments[i], creature.body_segments[i - 1]]);
 
-            current_transform.look_at(parent_transform.translation, Vec3::Y);
+//             current_transform.look_at(parent_transform.translation, Vec3::Y);
 
-            let dist = parent_transform
-                .translation
-                .distance(current_transform.translation);
-            let movement = current_transform.forward() * (dist - current.distance_to_parent);
-            current_transform.translation += movement;
+//             let dist = parent_transform
+//                 .translation
+//                 .distance(current_transform.translation);
+//             let movement = current_transform.forward() * (dist - current.distance_to_parent);
+//             current_transform.translation += movement;
 
-            gizmos.sphere(
-                current_transform.translation,
-                current_transform.rotation,
-                current.radius,
-                Color::WHITE,
-            );
-            gizmos.line(
-                current_transform.translation,
-                parent_transform.translation,
-                Color::BLUE,
-            );
-        }
-    }
-}
+//             gizmos.sphere(
+//                 current_transform.translation,
+//                 current_transform.rotation,
+//                 current.radius,
+//                 Color::WHITE,
+//             );
+//             gizmos.line(
+//                 current_transform.translation,
+//                 parent_transform.translation,
+//                 Color::BLUE,
+//             );
+//         }
+//     }
+// }
 
 fn move_legs(
     mut gizmos: Gizmos,
@@ -301,12 +305,14 @@ fn move_legs(
                 hip_l,
                 target_l.translation,
                 body_transform.forward(),
+                true,
             );
             let (knee_r, ankle_r, ball_r, toe_r) = solve_leg_ik(
                 &leg_r,
                 hip_r,
                 target_r.translation,
                 body_transform.forward(),
+                true,
             );
 
             draw_limb_segment(&mut gizmos, hip_l, knee_l, leg_l.femur_length);
@@ -337,6 +343,7 @@ fn solve_leg_ik(
     hip: Vec3,
     foot_target: Vec3,
     forward: Vec3,
+    flip_top_joint: bool,
 ) -> (Vec3, Vec3, Vec3, Vec3) {
     let ball = {
         let ankle_lift_percent = (1.0 - (leg.ankle_lift / FRAC_PI_2)).clamp(0.0, 1.0);
@@ -367,7 +374,7 @@ fn solve_leg_ik(
         ball + offset
     };
 
-    let gamma = {
+    let mut gamma = {
         if hip.distance(ankle) >= leg.femur_length + leg.tibia_length {
             0.0
         } else {
@@ -378,6 +385,9 @@ fn solve_leg_ik(
             )
         }
     };
+    if flip_top_joint {
+        gamma *= -1.0;
+    }
 
     let (rot_axis, _) = Quat::from_rotation_arc(-Vec3::Y, forward).to_axis_angle();
 
