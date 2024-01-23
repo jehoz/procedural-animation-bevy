@@ -85,7 +85,16 @@ enum LegIKType {
     Rear,
 }
 
-const PLANTIGRADE_LEG: Leg = Leg {
+const PLANTIGRADE_LEG_FRONT: Leg = Leg {
+    femur_length: 0.48,
+    tibia_length: 0.48,
+    metatarsal_length: 0.15,
+    toe_length: 0.1,
+    ankle_lift: 1.15,
+    ik_type: LegIKType::Front,
+};
+
+const PLANTIGRADE_LEG_REAR: Leg = Leg {
     femur_length: 0.5,
     tibia_length: 0.51,
     metatarsal_length: 0.1,
@@ -94,7 +103,16 @@ const PLANTIGRADE_LEG: Leg = Leg {
     ik_type: LegIKType::Rear,
 };
 
-const DIGITIGRADE_LEG: Leg = Leg {
+const DIGITIGRADE_LEG_FRONT: Leg = Leg {
+    femur_length: 0.37,
+    tibia_length: 0.57,
+    metatarsal_length: 0.21,
+    toe_length: 0.06,
+    ankle_lift: 1.5,
+    ik_type: LegIKType::Front,
+};
+
+const DIGITIGRADE_LEG_REAR: Leg = Leg {
     femur_length: 0.5,
     tibia_length: 0.45,
     metatarsal_length: 0.3,
@@ -103,7 +121,16 @@ const DIGITIGRADE_LEG: Leg = Leg {
     ik_type: LegIKType::Rear,
 };
 
-const UNGULIGRADE_LEG: Leg = Leg {
+const UNGULIGRADE_LEG_FRONT: Leg = Leg {
+    femur_length: 0.5,
+    tibia_length: 0.5,
+    metatarsal_length: 0.5,
+    toe_length: 0.0,
+    ankle_lift: 1.28,
+    ik_type: LegIKType::Front,
+};
+
+const UNGULIGRADE_LEG_REAR: Leg = Leg {
     femur_length: 0.5,
     tibia_length: 0.5,
     metatarsal_length: 0.5,
@@ -147,9 +174,13 @@ impl Creature {
 }
 
 fn spawn_creatures(mut commands: Commands) {
-    for (i, leg_type) in vec![PLANTIGRADE_LEG, DIGITIGRADE_LEG, UNGULIGRADE_LEG]
-        .iter()
-        .enumerate()
+    for (i, (front_leg_type, rear_leg_type)) in vec![
+        (PLANTIGRADE_LEG_FRONT, PLANTIGRADE_LEG_REAR),
+        (DIGITIGRADE_LEG_FRONT, DIGITIGRADE_LEG_REAR),
+        (UNGULIGRADE_LEG_FRONT, UNGULIGRADE_LEG_REAR),
+    ]
+    .iter()
+    .enumerate()
     {
         let mut creature = Creature::new();
 
@@ -161,6 +192,12 @@ fn spawn_creatures(mut commands: Commands) {
             ));
             let mut segment = BodySegment::new();
             if s == 0 || s == 2 {
+                let leg_type = if s == 2 {
+                    front_leg_type
+                } else {
+                    rear_leg_type
+                };
+
                 let leg_l = {
                     let oscillator = Oscillator {
                         frequency: 5.0,
