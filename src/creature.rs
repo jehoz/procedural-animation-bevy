@@ -70,6 +70,7 @@ struct Leg {
     metatarsal_length: f32,
     toe_length: f32,
     ankle_lift: f32,
+    ik_type: LegIKType,
 }
 
 impl Leg {
@@ -78,12 +79,19 @@ impl Leg {
     }
 }
 
+#[derive(Clone)]
+enum LegIKType {
+    Front,
+    Rear,
+}
+
 const PLANTIGRADE_LEG: Leg = Leg {
     femur_length: 0.5,
     tibia_length: 0.51,
     metatarsal_length: 0.1,
     toe_length: 0.1,
     ankle_lift: 0.0,
+    ik_type: LegIKType::Rear,
 };
 
 const DIGITIGRADE_LEG: Leg = Leg {
@@ -92,6 +100,7 @@ const DIGITIGRADE_LEG: Leg = Leg {
     metatarsal_length: 0.3,
     toe_length: 0.2,
     ankle_lift: 0.8,
+    ik_type: LegIKType::Rear,
 };
 
 const UNGULIGRADE_LEG: Leg = Leg {
@@ -100,6 +109,7 @@ const UNGULIGRADE_LEG: Leg = Leg {
     metatarsal_length: 0.5,
     toe_length: 0.0,
     ankle_lift: 1.28,
+    ik_type: LegIKType::Rear,
 };
 
 #[derive(Component)]
@@ -305,14 +315,12 @@ fn move_legs(
                 hip_l,
                 target_l.translation,
                 body_transform.forward(),
-                true,
             );
             let (knee_r, ankle_r, ball_r, toe_r) = solve_leg_ik(
                 &leg_r,
                 hip_r,
                 target_r.translation,
                 body_transform.forward(),
-                true,
             );
 
             draw_limb_segment(&mut gizmos, hip_l, knee_l, leg_l.femur_length);
@@ -343,7 +351,6 @@ fn solve_leg_ik(
     hip: Vec3,
     foot_target: Vec3,
     forward: Vec3,
-    flip_top_joint: bool,
 ) -> (Vec3, Vec3, Vec3, Vec3) {
     let ball = {
         let ankle_lift_percent = (1.0 - (leg.ankle_lift / FRAC_PI_2)).clamp(0.0, 1.0);
@@ -385,7 +392,7 @@ fn solve_leg_ik(
             )
         }
     };
-    if flip_top_joint {
+    if let LegIKType::Front = leg.ik_type {
         gamma *= -1.0;
     }
 
