@@ -28,7 +28,7 @@ impl Oscillator {
 
     /// Samples the oscillator as a normal sine wave.
     fn sin(&self, t: &Time) -> f32 {
-        self.frequency * (t.elapsed_seconds() + self.phase).sin()
+        f32::sin(self.frequency * t.elapsed_seconds() + self.phase)
     }
 
     /// Samples the oscillator as a skewed sine wave.
@@ -43,7 +43,7 @@ impl Oscillator {
         if skew == 0.0 {
             return self.sin(t);
         }
-        let x = self.frequency * (t.elapsed_seconds() + self.phase);
+        let x = self.frequency * t.elapsed_seconds() + self.phase;
         let skew = skew.clamp(-1.0, 1.0);
         (1.0 / skew) * f32::atan((skew * f32::sin(x)) / (1.0 - skew * f32::cos(x)))
     }
@@ -57,7 +57,7 @@ impl Oscillator {
         if bias == 0.0 {
             return self.sin(t);
         }
-        let x = self.frequency * (t.elapsed_seconds() + self.phase);
+        let x = self.frequency * t.elapsed_seconds() + self.phase;
         let k = 2_f32.powf(-bias);
         (2.0 * (k.powf(x.sin() + 1.0) - 1.0)) / (k.powi(2) - 1.0) - 1.0
     }
