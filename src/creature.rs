@@ -7,8 +7,9 @@ pub struct CreaturePlugin;
 impl Plugin for CreaturePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_creatures)
-            // .add_systems(Update, move_creatures)
-            .add_systems(Update, move_legs);
+            .add_systems(Update, propagate_creature_changes)
+            .add_systems(Update, move_legs)
+            .register_type::<Creature>();
     }
 }
 
@@ -154,16 +155,19 @@ impl BodySegment {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Default, Reflect)]
+#[reflect(Component)]
 struct Creature {
     move_speed: f32,
+    leg_phase_offset: f32,
     body_segments: Vec<Entity>,
 }
 
 impl Creature {
     fn new() -> Self {
         Creature {
-            move_speed: 1.0,
+            move_speed: 4.0,
+            leg_phase_offset: PI,
             body_segments: Vec::new(),
         }
     }
@@ -222,6 +226,29 @@ fn spawn_creatures(mut commands: Commands) {
     }
 }
 
+fn propagate_creature_changes(
+    creatures: Query<&Creature, Changed<Creature>>,
+    body_segments: Query<&BodySegment>,
+    mut leg_oscillators: Query<&mut Oscillator, With<Leg>>,
+) {
+    for creature in &creatures {
+        let mut row = 0;
+        for &e_id in &creature.body_segments {
+            let segment = body_segments.get(e_id).unwrap();
+            if let Some((ent_l, ent_r)) = segment.legs {
+                let [mut osc_l, mut osc_r] = leg_oscillators.many_mut([ent_l, ent_r]);
+
+                osc_l.phase = (row as f32) * creature.leg_phase_offset;
+                osc_l.frequency = creature.move_speed;
+                osc_r.phase = (row as f32) * creature.leg_phase_offset + PI;
+                osc_r.frequency = creature.move_speed;
+
+                row += 1;
+            }
+        }
+    }
+}
+
 fn move_legs(
     mut gizmos: Gizmos,
     mut body_segments: Query<(&BodySegment, &mut Transform)>,
@@ -241,7 +268,7 @@ fn move_legs(
 
             let b_osc = Oscillator {
                 frequency: osc_l.frequency * 2.0,
-                phase: 0.9306,
+                phase: osc_l.phase + 0.9306,
             };
             body_transform.translation.y =
                 0.9 * leg_l.max_length() - 0.025 * b_osc.asymmetric(&time, 1.0);
