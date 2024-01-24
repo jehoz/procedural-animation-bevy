@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use rand::prelude::*;
 use std::f32::consts::*;
 
 pub struct CreaturePlugin;
