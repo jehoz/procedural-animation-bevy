@@ -157,8 +157,6 @@ impl BodySegment {
 #[derive(Component)]
 struct Creature {
     move_speed: f32,
-    turn_speed: f32,
-    target_position: Vec3,
     body_segments: Vec<Entity>,
 }
 
@@ -166,8 +164,6 @@ impl Creature {
     fn new() -> Self {
         Creature {
             move_speed: 1.0,
-            turn_speed: PI,
-            target_position: Vec3::ZERO,
             body_segments: Vec::new(),
         }
     }
@@ -184,7 +180,8 @@ fn spawn_creatures(mut commands: Commands) {
     {
         let mut creature = Creature::new();
 
-        for s in 0..3 {
+        // for s in 0..3 {
+        for s in 0..1 {
             let transform = Transform::IDENTITY.with_translation(Vec3::new(
                 -1.5 + i as f32 * 1.5,
                 1.0,
@@ -223,80 +220,6 @@ fn spawn_creatures(mut commands: Commands) {
         commands.spawn(creature);
     }
 }
-
-// fn move_creatures(
-//     mut gizmos: Gizmos,
-//     mut creatures: Query<&mut Creature>,
-//     mut body_segments: Query<(&BodySegment, &mut Transform)>,
-//     time: Res<Time>,
-// ) {
-//     for mut creature in &mut creatures {
-//         let (head, mut head_transform) = body_segments.get_mut(creature.body_segments[0]).unwrap();
-
-//         // if reached target position, choose a new one randomly
-//         if head_transform
-//             .translation
-//             .xz()
-//             .distance(creature.target_position.xz())
-//             < 0.5
-//         {
-//             creature.target_position = Vec3 {
-//                 x: (random::<f32>() * 10.0) - 5.0,
-//                 y: head_transform.translation.y,
-//                 z: (random::<f32>() * 10.0) - 5.0,
-//             };
-//         }
-
-//         gizmos.circle(creature.target_position, Vec3::Y, 0.25, Color::RED);
-
-//         // turn head towards target
-//         let target_dir =
-//             (head_transform.translation.xz() - creature.target_position.xz()).normalize();
-//         let (_, _, mut y_rot) =
-//             Quat::from_rotation_arc_2d(head_transform.forward().xz(), target_dir)
-//                 .to_euler(EulerRot::XYZ);
-//         let max_turn = creature.turn_speed * time.delta_seconds();
-//         y_rot = y_rot.clamp(-max_turn, max_turn);
-//         head_transform.rotate(Quat::from_rotation_y(y_rot));
-
-//         // move head forward
-//         let movement = head_transform.forward() * creature.move_speed * time.delta_seconds();
-//         head_transform.translation += movement;
-
-//         gizmos.sphere(
-//             head_transform.translation,
-//             head_transform.rotation,
-//             head.radius,
-//             Color::WHITE,
-//         );
-
-//         // move each trailing body segment towards the one ahead of it
-//         for i in 1..creature.body_segments.len() {
-//             let [(current, mut current_transform), (_, parent_transform)] =
-//                 body_segments.many_mut([creature.body_segments[i], creature.body_segments[i - 1]]);
-
-//             current_transform.look_at(parent_transform.translation, Vec3::Y);
-
-//             let dist = parent_transform
-//                 .translation
-//                 .distance(current_transform.translation);
-//             let movement = current_transform.forward() * (dist - current.distance_to_parent);
-//             current_transform.translation += movement;
-
-//             gizmos.sphere(
-//                 current_transform.translation,
-//                 current_transform.rotation,
-//                 current.radius,
-//                 Color::WHITE,
-//             );
-//             gizmos.line(
-//                 current_transform.translation,
-//                 parent_transform.translation,
-//                 Color::BLUE,
-//             );
-//         }
-//     }
-// }
 
 fn move_legs(
     mut gizmos: Gizmos,
