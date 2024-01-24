@@ -180,16 +180,15 @@ fn spawn_creatures(mut commands: Commands) {
     {
         let mut creature = Creature::new();
 
-        // for s in 0..3 {
-        for s in 0..1 {
+        for s in 0..3 {
             let transform = Transform::IDENTITY.with_translation(Vec3::new(
                 -1.5 + i as f32 * 1.5,
                 1.0,
-                0.25 + -0.5 * s as f32,
+                -0.75 + 0.5 * s as f32,
             ));
             let mut segment = BodySegment::new();
             if s == 0 || s == 2 {
-                let leg_type = if s == 2 {
+                let leg_type = if s == 0 {
                     front_leg_type
                 } else {
                     rear_leg_type
@@ -213,11 +212,13 @@ fn spawn_creatures(mut commands: Commands) {
                 };
                 segment.legs = Some((leg_l, leg_r));
             }
-            let segment_ent = commands.spawn((segment, transform)).id();
+            let s_name = Name::new(format!("Creature {} - Segment {}", i, s));
+            let segment_ent = commands.spawn((s_name, segment, transform)).id();
             creature.body_segments.push(segment_ent);
         }
 
-        commands.spawn(creature);
+        let c_name = Name::new(format!("Creature {}", i));
+        commands.spawn((c_name, creature));
     }
 }
 
