@@ -73,53 +73,51 @@ struct Leg {
     tibia_length: f32,
     metatarsal_length: f32,
     toe_length: f32,
-    ankle_lift: f32,
+    ankle_elevation: f32,
     ik_type: LegIKType,
 }
 
 impl Leg {
     fn max_length(&self) -> f32 {
-        self.femur_length + self.tibia_length + self.metatarsal_length * self.ankle_lift.cos()
+        self.femur_length + self.tibia_length + self.metatarsal_length * self.ankle_elevation.cos()
     }
 }
 
 impl KinematicChain for Leg {
     fn solve_ik(&self, origin: &Transform, target: &Transform) -> Vec<Quat> {
         let forward = origin.forward();
+        let left = origin.left();
         let hip = origin.translation;
 
+        // ball of foot (joint between toes and metatarsals) is offset from foot target depending
+        // on how high the heel is raised.  Fully plantigrade feet (no heel elevation) align the
+        // heel with the foot target. Feet with fully vertical heels align the ball of the
         let ball = {
-            let ankle_lift_percent = (1.0 - (self.ankle_lift / FRAC_PI_2)).clamp(0.0, 1.0);
+            let elev_percent = (1.0 - (self.ankle_elevation / FRAC_PI_2)).clamp(0.0, 1.0);
             let offset =
-                ankle_lift_percent * (self.ankle_lift.cos() * self.metatarsal_length) * forward;
+                elev_percent * (self.ankle_elevation.cos() * self.metatarsal_length) * forward;
             target.translation + offset
         };
 
-        // modify the ankle bend slightly depending on foot's position relative to hip
-        let ankle_lift = {
+        // the foot rotates slightly as the leg moves forward and backward, this determines the
+        // final angle of the ankle elevation and toe bone
+        let (ankle_elevation, toe) = {
             let hip_to_ball = ball - hip;
             let xz = hip_to_ball.xz().length() * forward.xz().dot(hip_to_ball.xz()).signum();
-            self.ankle_lift + (xz / hip_to_ball.y).atan()
+            let angle = (xz / hip_to_ball.y).atan();
+
+            let toe_offset = Quat::from_axis_angle(left, angle) * (forward * self.toe_length);
+            (self.ankle_elevation + angle, ball + toe_offset)
         };
 
+        // ankle position is computed from ball joint position and ankle elevation angle
         let ankle = {
             let mut offset = -forward * self.metatarsal_length;
-            let (axis, _) = Quat::from_rotation_arc(-forward, Vec3::Y).to_axis_angle();
-
-            offset = Quat::from_axis_angle(axis, ankle_lift).mul_vec3(offset);
+            offset = Quat::from_axis_angle(left, ankle_elevation) * offset;
             ball + offset
         };
 
-        let toe = {
-            let ankle_to_ball = ball - ankle;
-            let xz = ankle_to_ball.xz().length() * forward.xz().dot(ankle_to_ball.xz()).signum();
-            let toe_angle = (ankle_to_ball.y / xz).atan().max(0.0);
-            let (axis, _) = Quat::from_rotation_arc(forward, Vec3::Y).to_axis_angle();
-            let mut offset = forward * self.toe_length;
-            offset = Quat::from_axis_angle(axis, toe_angle).mul_vec3(offset);
-            ball + offset
-        };
-
+        // use law of cosines to find angle of hip joint
         let mut gamma = {
             let l = hip.distance(ankle);
             if l >= self.femur_length + self.tibia_length {
@@ -132,16 +130,22 @@ impl KinematicChain for Leg {
             }
         };
 
-        // for front legs, the first joint (knee/elbow) bends the opposite direction
+        // for front legs, the knee/elbow joint bends the opposite direction, so hip angle is
+        // reversed
         if let LegIKType::Front = self.ik_type {
             gamma *= -1.0;
         }
 
-        let (axis, _) = Quat::from_rotation_arc(-Vec3::Y, forward).to_axis_angle();
-        let rotation = Quat::from_axis_angle(axis, gamma);
-        let offset = (ankle - hip).normalize() * self.femur_length;
-        let knee = hip + (rotation * offset);
+        // compute knee position from hip angle and bone lengths
+        let knee = {
+            let rotation = Quat::from_axis_angle(-left, gamma);
+            let offset = (ankle - hip).normalize() * self.femur_length;
+            hip + (rotation * offset)
+        };
 
+        // compute rotations from positions
+        // (this whole function feels a little janky but not sure if there's a
+        // better way)
         let mut prev = origin.clone();
         let mut joint_quats = vec![];
         for joint_pos in [knee, ankle, ball, toe] {
@@ -167,7 +171,7 @@ const PLANTIGRADE_LEG_FRONT: Leg = Leg {
     tibia_length: 0.48,
     metatarsal_length: 0.15,
     toe_length: 0.1,
-    ankle_lift: 1.15,
+    ankle_elevation: 1.15,
     ik_type: LegIKType::Front,
 };
 
@@ -176,7 +180,7 @@ const PLANTIGRADE_LEG_REAR: Leg = Leg {
     tibia_length: 0.51,
     metatarsal_length: 0.1,
     toe_length: 0.1,
-    ankle_lift: 0.0,
+    ankle_elevation: 0.0,
     ik_type: LegIKType::Rear,
 };
 
@@ -185,7 +189,7 @@ const DIGITIGRADE_LEG_FRONT: Leg = Leg {
     tibia_length: 0.57,
     metatarsal_length: 0.21,
     toe_length: 0.06,
-    ankle_lift: 1.5,
+    ankle_elevation: 1.5,
     ik_type: LegIKType::Front,
 };
 
@@ -194,7 +198,7 @@ const DIGITIGRADE_LEG_REAR: Leg = Leg {
     tibia_length: 0.45,
     metatarsal_length: 0.3,
     toe_length: 0.2,
-    ankle_lift: 0.8,
+    ankle_elevation: 0.8,
     ik_type: LegIKType::Rear,
 };
 
@@ -203,7 +207,7 @@ const UNGULIGRADE_LEG_FRONT: Leg = Leg {
     tibia_length: 0.5,
     metatarsal_length: 0.5,
     toe_length: 0.0,
-    ankle_lift: 1.28,
+    ankle_elevation: 1.28,
     ik_type: LegIKType::Front,
 };
 
@@ -212,7 +216,7 @@ const UNGULIGRADE_LEG_REAR: Leg = Leg {
     tibia_length: 0.5,
     metatarsal_length: 0.5,
     toe_length: 0.0,
-    ankle_lift: 1.28,
+    ankle_elevation: 1.28,
     ik_type: LegIKType::Rear,
 };
 
