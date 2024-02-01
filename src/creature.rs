@@ -63,6 +63,10 @@ impl Oscillator {
     }
 }
 
+trait KinematicChain {
+    fn solve_ik(&self, origin: &Transform, target: &Transform) -> Vec<Quat>;
+}
+
 #[derive(Component, Clone)]
 struct Leg {
     femur_length: f32,
@@ -76,6 +80,79 @@ struct Leg {
 impl Leg {
     fn max_length(&self) -> f32 {
         self.femur_length + self.tibia_length + self.metatarsal_length * self.ankle_lift.cos()
+    }
+}
+
+impl KinematicChain for Leg {
+    fn solve_ik(&self, origin: &Transform, target: &Transform) -> Vec<Quat> {
+        let forward = origin.forward();
+        let hip = origin.translation;
+
+        let ball = {
+            let ankle_lift_percent = (1.0 - (self.ankle_lift / FRAC_PI_2)).clamp(0.0, 1.0);
+            let offset =
+                ankle_lift_percent * (self.ankle_lift.cos() * self.metatarsal_length) * forward;
+            target.translation + offset
+        };
+
+        // modify the ankle bend slightly depending on foot's position relative to hip
+        let ankle_lift = {
+            let hip_to_ball = ball - hip;
+            let xz = hip_to_ball.xz().length() * forward.xz().dot(hip_to_ball.xz()).signum();
+            self.ankle_lift + (xz / hip_to_ball.y).atan()
+        };
+
+        let ankle = {
+            let mut offset = -forward * self.metatarsal_length;
+            let (axis, _) = Quat::from_rotation_arc(-forward, Vec3::Y).to_axis_angle();
+
+            offset = Quat::from_axis_angle(axis, ankle_lift).mul_vec3(offset);
+            ball + offset
+        };
+
+        let toe = {
+            let ankle_to_ball = ball - ankle;
+            let xz = ankle_to_ball.xz().length() * forward.xz().dot(ankle_to_ball.xz()).signum();
+            let toe_angle = (ankle_to_ball.y / xz).atan().max(0.0);
+            let (axis, _) = Quat::from_rotation_arc(forward, Vec3::Y).to_axis_angle();
+            let mut offset = forward * self.toe_length;
+            offset = Quat::from_axis_angle(axis, toe_angle).mul_vec3(offset);
+            ball + offset
+        };
+
+        let mut gamma = {
+            let l = hip.distance(ankle);
+            if l >= self.femur_length + self.tibia_length {
+                0.0
+            } else {
+                f32::acos(
+                    (l.powi(2) + self.femur_length.powi(2) - self.tibia_length.powi(2))
+                        / (2.0 * l * self.femur_length),
+                )
+            }
+        };
+
+        // for front legs, the first joint (knee/elbow) bends the opposite direction
+        if let LegIKType::Front = self.ik_type {
+            gamma *= -1.0;
+        }
+
+        let (axis, _) = Quat::from_rotation_arc(-Vec3::Y, forward).to_axis_angle();
+        let rotation = Quat::from_axis_angle(axis, gamma);
+        let offset = (ankle - hip).normalize() * self.femur_length;
+        let knee = hip + (rotation * offset);
+
+        let mut prev = origin.clone();
+        let mut joint_quats = vec![];
+        for joint_pos in [knee, ankle, ball, toe] {
+            let from = prev.forward();
+            let to = (joint_pos - prev.translation).normalize();
+            let q = Quat::from_rotation_arc(from, to);
+            joint_quats.push(q);
+            prev.rotate(q);
+            prev.translation = joint_pos;
+        }
+        joint_quats
     }
 }
 
@@ -297,98 +374,29 @@ fn move_legs(
             };
             gizmos.circle(target_r.translation, Vec3::Y, 0.025, Color::RED);
 
-            let (knee_l, ankle_l, ball_l, toe_l) = solve_leg_ik(
-                &leg_l,
-                hip_l,
-                target_l.translation,
-                body_transform.forward(),
-            );
-            let (knee_r, ankle_r, ball_r, toe_r) = solve_leg_ik(
-                &leg_r,
-                hip_r,
-                target_r.translation,
-                body_transform.forward(),
-            );
+            let hip_l_t = body_transform.with_translation(hip_l);
+            let joints = leg_l.solve_ik(&hip_l_t, &target_l);
+            draw_leg(&mut gizmos, &hip_l_t, &leg_l, joints);
 
-            draw_limb_segment(&mut gizmos, hip_l, knee_l, leg_l.femur_length);
-            draw_limb_segment(&mut gizmos, knee_l, ankle_l, leg_l.tibia_length);
-            draw_limb_segment(&mut gizmos, ankle_l, ball_l, leg_l.metatarsal_length);
-            draw_limb_segment(&mut gizmos, ball_l, toe_l, leg_l.toe_length);
-
-            draw_limb_segment(&mut gizmos, hip_r, knee_r, leg_r.femur_length);
-            draw_limb_segment(&mut gizmos, knee_r, ankle_r, leg_r.tibia_length);
-            draw_limb_segment(&mut gizmos, ankle_r, ball_r, leg_r.metatarsal_length);
-            draw_limb_segment(&mut gizmos, ball_r, toe_r, leg_r.toe_length);
+            let hip_r_t = body_transform.with_translation(hip_r);
+            let joints = leg_r.solve_ik(&hip_r_t, &target_r);
+            draw_leg(&mut gizmos, &hip_r_t, &leg_r, joints);
         }
     }
 }
 
-fn draw_limb_segment(gizmos: &mut Gizmos, a: Vec3, b: Vec3, length: f32) {
-    if a.distance(b) < length * 0.99 {
-        gizmos.line(a, b, Color::CYAN);
-    } else if a.distance(b) > length * 1.01 {
-        gizmos.line(a, b, Color::RED);
-    } else {
-        gizmos.line(a, b, Color::PURPLE);
+fn draw_leg(gizmos: &mut Gizmos, origin: &Transform, leg: &Leg, joint_quats: Vec<Quat>) {
+    let mut t = origin.to_owned();
+    for (orientation, len) in joint_quats.iter().zip(vec![
+        leg.femur_length,
+        leg.tibia_length,
+        leg.metatarsal_length,
+        leg.toe_length,
+    ]) {
+        t.rotate(orientation.to_owned());
+        let v = t.forward() * len;
+        gizmos.ray(t.translation, v, Color::PURPLE);
+
+        t.translation += v;
     }
-}
-
-fn solve_leg_ik(
-    leg: &Leg,
-    hip: Vec3,
-    foot_target: Vec3,
-    forward: Vec3,
-) -> (Vec3, Vec3, Vec3, Vec3) {
-    let ball = {
-        let ankle_lift_percent = (1.0 - (leg.ankle_lift / FRAC_PI_2)).clamp(0.0, 1.0);
-        let offset = ankle_lift_percent * (leg.ankle_lift.cos() * leg.metatarsal_length) * forward;
-        foot_target + offset
-    };
-
-    let ankle_lift = {
-        let hip_to_ball = ball - hip;
-        let xz = hip_to_ball.xz().length() * forward.xz().dot(hip_to_ball.xz()).signum();
-        leg.ankle_lift + (xz / hip_to_ball.y).atan()
-    };
-
-    let ankle = {
-        let mut offset = -forward * leg.metatarsal_length;
-        let (axis, _) = Quat::from_rotation_arc(-forward, Vec3::Y).to_axis_angle();
-        offset = Quat::from_axis_angle(axis, ankle_lift).mul_vec3(offset);
-        ball + offset
-    };
-
-    let toe = {
-        let ankle_to_ball = ball - ankle;
-        let xz = ankle_to_ball.xz().length() * forward.xz().dot(ankle_to_ball.xz()).signum();
-        let toe_angle = (ankle_to_ball.y / xz).atan().max(0.0);
-        let (axis, _) = Quat::from_rotation_arc(forward, Vec3::Y).to_axis_angle();
-        let mut offset = forward * leg.toe_length;
-        offset = Quat::from_axis_angle(axis, toe_angle).mul_vec3(offset);
-        ball + offset
-    };
-
-    let mut gamma = {
-        if hip.distance(ankle) >= leg.femur_length + leg.tibia_length {
-            0.0
-        } else {
-            let l = hip.distance(ankle);
-            f32::acos(
-                (l.powi(2) + leg.femur_length.powi(2) - leg.tibia_length.powi(2))
-                    / (2.0 * l * leg.femur_length),
-            )
-        }
-    };
-    if let LegIKType::Front = leg.ik_type {
-        gamma *= -1.0;
-    }
-
-    let (rot_axis, _) = Quat::from_rotation_arc(-Vec3::Y, forward).to_axis_angle();
-
-    let rotation = Quat::from_axis_angle(rot_axis, gamma);
-
-    let mut offset = (ankle - hip).normalize() * leg.femur_length;
-    offset = rotation.mul_vec3(offset);
-
-    return (hip + offset, ankle, ball, toe);
 }
